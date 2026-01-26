@@ -1,0 +1,14 @@
+runtime: plugin
+action:
+  title: Add
+  description: |
+    Add a new chassis section to chassis.yaml.
+
+    Examples:
+      chassis:add platform.interaction.analytics
+      chassis:add platform.cognition.ml.training
+  arguments:
+    - name: section
+      title: Section
+      description: Chassis section path to add (e.g., platform.layer.path.to.section)
+      required: true
