@@ -8,10 +8,13 @@ import (
 	"github.com/launchrctl/launchr"
 	"github.com/launchrctl/launchr/pkg/action"
 
-	caction "github.com/plasmash/plasmactl-chassis/action"
+	"github.com/plasmash/plasmactl-chassis/actions/add"
+	"github.com/plasmash/plasmactl-chassis/actions/list"
+	"github.com/plasmash/plasmactl-chassis/actions/remove"
+	"github.com/plasmash/plasmactl-chassis/actions/show"
 )
 
-//go:embed action/*.yaml
+//go:embed actions/*/*.yaml
 var actionYamlFS embed.FS
 
 func init() {
@@ -39,7 +42,7 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
 func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	// chassis:list - List chassis sections
-	listYaml, _ := actionYamlFS.ReadFile("action/list.yaml")
+	listYaml, _ := actionYamlFS.ReadFile("actions/list/list.yaml")
 	listAct := action.NewFromYAML("chassis:list", listYaml)
 	listAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
@@ -50,7 +53,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 			section = input.Arg("section").(string)
 		}
 
-		list := &caction.List{
+		list := &list.List{
 			Section: section,
 			Tree:    input.Opt("tree").(bool),
 		}
@@ -60,13 +63,13 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	// chassis:show - Show chassis section details
-	showYaml, _ := actionYamlFS.ReadFile("action/show.yaml")
+	showYaml, _ := actionYamlFS.ReadFile("actions/show/show.yaml")
 	showAct := action.NewFromYAML("chassis:show", showYaml)
 	showAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
 
-		show := &caction.Show{
+		show := &show.Show{
 			Section:  input.Arg("section").(string),
 			Platform: input.Opt("platform").(string),
 		}
@@ -76,13 +79,13 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	// chassis:add - Add a chassis section
-	addYaml, _ := actionYamlFS.ReadFile("action/add.yaml")
+	addYaml, _ := actionYamlFS.ReadFile("actions/add/add.yaml")
 	addAct := action.NewFromYAML("chassis:add", addYaml)
 	addAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
 
-		add := &caction.Add{
+		add := &add.Add{
 			Section: input.Arg("section").(string),
 		}
 		add.SetLogger(log)
@@ -91,13 +94,13 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	// chassis:remove - Remove a chassis section
-	removeYaml, _ := actionYamlFS.ReadFile("action/remove.yaml")
+	removeYaml, _ := actionYamlFS.ReadFile("actions/remove/remove.yaml")
 	removeAct := action.NewFromYAML("chassis:remove", removeYaml)
 	removeAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
 
-		remove := &caction.Remove{
+		remove := &remove.Remove{
 			Section: input.Arg("section").(string),
 		}
 		remove.SetLogger(log)

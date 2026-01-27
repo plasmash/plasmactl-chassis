@@ -6,6 +6,13 @@ A [Launchr](https://github.com/launchrctl/launchr) plugin for [Plasmactl](https:
 
 `plasmactl-chassis` manages the platform's "skeleton" - the structural framework where applications and flows attach. The chassis maps logical architecture to physical resources, ensuring components get appropriate compute resources (GPU for AI, storage for data, etc.).
 
+## Features
+
+- **Chassis Structure**: Hierarchical definition of platform sections
+- **Section Management**: Add and remove chassis sections
+- **Node Visibility**: See which nodes are allocated to each section
+- **Component Visibility**: See which components are attached to each section
+
 ## Concepts
 
 ### Chassis Structure
@@ -94,6 +101,29 @@ plasmactl chassis:remove platform.interaction.legacy
 
 **Safety**: Fails if nodes are allocated or components are attached. Use `node:allocate` and `component:detach` first to clean up.
 
+## Project Structure
+
+```
+plasmactl-chassis/
+├── plugin.go                        # Plugin registration
+├── actions/
+│   ├── add/
+│   │   ├── add.yaml                 # Action definition
+│   │   └── add.go                   # Implementation
+│   ├── list/
+│   │   ├── list.yaml
+│   │   └── list.go
+│   ├── remove/
+│   │   ├── remove.yaml
+│   │   └── remove.go
+│   └── show/
+│       ├── show.yaml
+│       └── show.go
+└── internal/
+    └── chassis/                     # Chassis operations
+        └── chassis.go
+```
+
 ## Directory Structure
 
 The chassis interacts with several locations:
@@ -145,6 +175,7 @@ plasmactl chassis:remove platform.interaction.legacy
 | plasmactl-node | `node:allocate` | Allocate nodes to chassis sections |
 | plasmactl-component | `component:attach` | Attach components to chassis sections |
 | plasmactl-component | `component:detach` | Detach components from chassis sections |
+| plasmactl-platform | `platform:deploy` | Deploy to chassis sections |
 
 ## Documentation
 

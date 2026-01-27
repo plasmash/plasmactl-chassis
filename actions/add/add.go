@@ -1,4 +1,4 @@
-package action
+package add
 
 import (
 	"github.com/launchrctl/launchr/pkg/action"
