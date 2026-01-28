@@ -1,14 +1,7 @@
 runtime: plugin
 action:
   title: List
-  description: |
-    List chassis sections from chassis.yaml.
-
-    Examples:
-      chassis:list                                    # All sections (flat)
-      chassis:list --tree                             # All sections (tree)
-      chassis:list platform.interaction               # Section and children
-      chassis:list platform.foundation.cluster --tree # Section and children (tree)
+  description: List chassis sections from chassis.yaml
   arguments:
     - name: section
       title: Section

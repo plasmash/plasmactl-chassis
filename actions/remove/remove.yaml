@@ -1,14 +1,7 @@
 runtime: plugin
 action:
   title: Remove
-  description: |
-    Remove a chassis section from chassis.yaml.
-
-    Fails if nodes are allocated or components are attached.
-    Use node:allocate and component:detach first to clean up.
-
-    Examples:
-      chassis:remove platform.interaction.legacy
+  description: Remove a chassis section from chassis.yaml
   arguments:
     - name: section
       title: Section

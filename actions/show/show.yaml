@@ -1,16 +1,7 @@
 runtime: plugin
 action:
   title: Show
-  description: |
-    Show details for a chassis section.
-
-    Displays:
-      - Allocated nodes (from inst/<platform>/nodes/)
-      - Attached components (from layer playbooks)
-
-    Examples:
-      chassis:show platform.interaction.observability
-      chassis:show platform.foundation.cluster.control --platform dev
+  description: Show details for a chassis section
   arguments:
     - name: section
       title: Section
