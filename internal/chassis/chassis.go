@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Chassis represents the platform chassis configuration from chassis.yaml
-type Chassis struct {
-	Platform map[string][]interface{} `yaml:"platform"`
+// OrderedChassis represents the platform chassis configuration preserving YAML order
+type OrderedChassis struct {
+	node *yaml.Node
+	data map[string]map[string][]interface{}
 }
+
+// Chassis is an alias for backward compatibility
+type Chassis = OrderedChassis
 
 // Node represents a node file from inst/<platform>/nodes/<hostname>.yaml
 type Node struct {
@@ -30,18 +33,26 @@ func Load(dir string) (*Chassis, error) {
 		return nil, fmt.Errorf("failed to read chassis.yaml: %w", err)
 	}
 
-	var c Chassis
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
 		return nil, fmt.Errorf("failed to parse chassis.yaml: %w", err)
 	}
 
-	return &c, nil
+	var parsed map[string]map[string][]interface{}
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse chassis.yaml: %w", err)
+	}
+
+	return &Chassis{
+		node: &node,
+		data: parsed,
+	}, nil
 }
 
 // Save writes the chassis configuration to chassis.yaml
 func (c *Chassis) Save(dir string) error {
 	path := filepath.Join(dir, "chassis.yaml")
-	data, err := yaml.Marshal(c)
+	data, err := yaml.Marshal(c.data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal chassis: %w", err)
 	}
@@ -49,13 +60,67 @@ func (c *Chassis) Save(dir string) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// Flatten returns all chassis section paths as a sorted flat list
+// Flatten returns all chassis section paths preserving YAML order
 func (c *Chassis) Flatten() []string {
-	var paths []string
-	for layer, sections := range c.Platform {
-		paths = append(paths, flattenSections("platform."+layer, sections)...)
+	if c.node == nil || len(c.node.Content) == 0 {
+		return nil
 	}
-	sort.Strings(paths)
+
+	var paths []string
+	rootNode := c.node.Content[0]
+	if rootNode.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	// Iterate root keys (e.g., "platform")
+	for i := 0; i < len(rootNode.Content); i += 2 {
+		rootKey := rootNode.Content[i].Value
+		rootValue := rootNode.Content[i+1]
+		paths = append(paths, rootKey)
+
+		if rootValue.Kind != yaml.MappingNode {
+			continue
+		}
+
+		// Iterate layers (e.g., "foundation", "interaction")
+		for j := 0; j < len(rootValue.Content); j += 2 {
+			layerKey := rootValue.Content[j].Value
+			layerValue := rootValue.Content[j+1]
+			layerPrefix := rootKey + "." + layerKey
+			paths = append(paths, layerPrefix)
+
+			if layerValue.Kind == yaml.SequenceNode {
+				paths = append(paths, flattenSequence(layerPrefix, layerValue)...)
+			}
+		}
+	}
+
+	return paths
+}
+
+// flattenSequence recursively flattens a YAML sequence preserving order
+func flattenSequence(prefix string, node *yaml.Node) []string {
+	var paths []string
+
+	for _, item := range node.Content {
+		switch item.Kind {
+		case yaml.ScalarNode:
+			// Simple string item
+			paths = append(paths, prefix+"."+item.Value)
+		case yaml.MappingNode:
+			// Nested structure like "cluster: [control, nodes]"
+			for k := 0; k < len(item.Content); k += 2 {
+				key := item.Content[k].Value
+				value := item.Content[k+1]
+				newPrefix := prefix + "." + key
+				paths = append(paths, newPrefix)
+				if value.Kind == yaml.SequenceNode {
+					paths = append(paths, flattenSequence(newPrefix, value)...)
+				}
+			}
+		}
+	}
+
 	return paths
 }
 
@@ -86,44 +151,46 @@ func (c *Chassis) Exists(section string) bool {
 }
 
 // Add adds a new section to the chassis
-// Section format: platform.layer.path.to.section
+// Section format: root.layer.path.to.section (e.g., platform.foundation.cluster)
 func (c *Chassis) Add(section string) error {
 	parts := strings.Split(section, ".")
-	if len(parts) < 3 || parts[0] != "platform" {
-		return fmt.Errorf("invalid section format: must start with 'platform.<layer>.'")
+	if len(parts) < 3 {
+		return fmt.Errorf("invalid section format: need at least root.layer.section")
 	}
 
 	if c.Exists(section) {
 		return fmt.Errorf("section %q already exists", section)
 	}
 
+	root := parts[0]
 	layer := parts[1]
 	remaining := parts[2:]
 
-	if c.Platform == nil {
-		c.Platform = make(map[string][]interface{})
+	if c.data[root] == nil {
+		c.data[root] = make(map[string][]interface{})
 	}
 
-	c.Platform[layer] = addToSections(c.Platform[layer], remaining)
+	c.data[root][layer] = addToSections(c.data[root][layer], remaining)
 	return nil
 }
 
 // Remove removes a section from the chassis
 func (c *Chassis) Remove(section string) error {
 	parts := strings.Split(section, ".")
-	if len(parts) < 3 || parts[0] != "platform" {
-		return fmt.Errorf("invalid section format: must start with 'platform.<layer>.'")
+	if len(parts) < 3 {
+		return fmt.Errorf("invalid section format: need at least root.layer.section")
 	}
 
 	if !c.Exists(section) {
 		return fmt.Errorf("section %q does not exist", section)
 	}
 
+	root := parts[0]
 	layer := parts[1]
 	remaining := parts[2:]
 
 	var removed bool
-	c.Platform[layer], removed = removeFromSections(c.Platform[layer], remaining)
+	c.data[root][layer], removed = removeFromSections(c.data[root][layer], remaining)
 	if !removed {
 		return fmt.Errorf("failed to remove section %q", section)
 	}
@@ -134,33 +201,12 @@ func (c *Chassis) Remove(section string) error {
 // GetTree returns the chassis as a tree structure for display
 func (c *Chassis) GetTree() map[string]interface{} {
 	tree := make(map[string]interface{})
-	for layer, sections := range c.Platform {
-		tree["platform."+layer] = sectionsToTree(sections)
-	}
-	return tree
-}
-
-// flattenSections recursively flattens chassis sections into paths
-func flattenSections(prefix string, sections []interface{}) []string {
-	var paths []string
-	paths = append(paths, prefix) // Include the prefix itself
-
-	for _, section := range sections {
-		switch s := section.(type) {
-		case string:
-			paths = append(paths, prefix+"."+s)
-		case map[string]interface{}:
-			for name, subsections := range s {
-				newPrefix := prefix + "." + name
-				if sub, ok := subsections.([]interface{}); ok {
-					paths = append(paths, flattenSections(newPrefix, sub)...)
-				} else {
-					paths = append(paths, newPrefix)
-				}
-			}
+	for root, layers := range c.data {
+		for layer, sections := range layers {
+			tree[root+"."+layer] = sectionsToTree(sections)
 		}
 	}
-	return paths
+	return tree
 }
 
 // addToSections adds a path to the sections structure

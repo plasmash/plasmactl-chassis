@@ -1,9 +1,8 @@
 package list
 
 import (
-	"sort"
+	"fmt"
 
-	"github.com/launchrctl/launchr"
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-chassis/internal/chassis"
 )
@@ -41,14 +40,15 @@ func (l *List) Execute() error {
 
 func (l *List) printFlat(sections []string) {
 	for _, section := range sections {
-		l.Term().Println(section)
+		fmt.Println(section)
 	}
 }
 
 func (l *List) printTree(sections []string) {
 	// Build tree structure from paths
 	tree := buildTree(sections)
-	printTreeNode(l.Term(), tree, "", true)
+	// Print tree starting from root's children
+	printChildren(tree.children, "")
 }
 
 type treeNode struct {
@@ -101,21 +101,14 @@ func splitPath(path string) []string {
 	return parts
 }
 
-func printTreeNode(term *launchr.Terminal, node *treeNode, indent string, isRoot bool) {
-	if !isRoot {
-		term.Println(node.name)
-	}
+func printChildren(children []*treeNode, indent string) {
+	for i, child := range children {
+		isLast := i == len(children)-1
 
-	// Sort children
-	sort.Slice(node.children, func(i, j int) bool {
-		return node.children[i].name < node.children[j].name
-	})
-
-	for i, child := range node.children {
-		isLast := i == len(node.children)-1
+		// Determine the prefix and indent for this node
 		var prefix, childIndent string
-
-		if isRoot {
+		if indent == "" {
+			// Top level - no tree connectors
 			prefix = ""
 			childIndent = ""
 		} else if isLast {
@@ -126,7 +119,17 @@ func printTreeNode(term *launchr.Terminal, node *treeNode, indent string, isRoot
 			childIndent = indent + "│   "
 		}
 
-		term.Print(prefix)
-		printTreeNode(term, child, childIndent, false)
+		// Print this node
+		fmt.Println(prefix + child.name)
+
+		// Print children with updated indent
+		if len(child.children) > 0 {
+			if indent == "" {
+				// First level children get tree connectors
+				printChildren(child.children, "")
+			} else {
+				printChildren(child.children, childIndent)
+			}
+		}
 	}
 }
