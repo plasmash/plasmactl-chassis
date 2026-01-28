@@ -20,6 +20,6 @@ action:
     - name: platform
       shorthand: p
       title: Platform
-      description: Filter nodes by platform instance (default: all)
+      description: "Filter nodes by platform instance (default: all)"
       type: string
       default: ""
