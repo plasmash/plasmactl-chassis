@@ -48,7 +48,9 @@ func (l *List) printTree(sections []string) {
 	// Build tree structure from paths
 	tree := buildTree(sections)
 	// Print tree starting from root's children
-	printChildren(tree.children, "")
+	for _, child := range tree.children {
+		printNode(child, "")
+	}
 }
 
 type treeNode struct {
@@ -101,35 +103,46 @@ func splitPath(path string) []string {
 	return parts
 }
 
-func printChildren(children []*treeNode, indent string) {
-	for i, child := range children {
-		isLast := i == len(children)-1
+func printNode(node *treeNode, indent string) {
+	// Print this node
+	fmt.Println(node.name)
 
-		// Determine the prefix and indent for this node
-		var prefix, childIndent string
-		if indent == "" {
-			// Top level - no tree connectors
-			prefix = ""
-			childIndent = ""
-		} else if isLast {
+	// Print children with tree structure
+	for i, child := range node.children {
+		isLast := i == len(node.children)-1
+
+		var prefix, nextIndent string
+		if isLast {
 			prefix = indent + "└── "
-			childIndent = indent + "    "
+			nextIndent = indent + "    "
 		} else {
 			prefix = indent + "├── "
-			childIndent = indent + "│   "
+			nextIndent = indent + "│   "
 		}
 
-		// Print this node
-		fmt.Println(prefix + child.name)
+		fmt.Print(prefix)
+		printNodeWithIndent(child, nextIndent)
+	}
+}
 
-		// Print children with updated indent
-		if len(child.children) > 0 {
-			if indent == "" {
-				// First level children get tree connectors
-				printChildren(child.children, "")
-			} else {
-				printChildren(child.children, childIndent)
-			}
+func printNodeWithIndent(node *treeNode, indent string) {
+	// Print this node's name (prefix already printed)
+	fmt.Println(node.name)
+
+	// Print children
+	for i, child := range node.children {
+		isLast := i == len(node.children)-1
+
+		var prefix, nextIndent string
+		if isLast {
+			prefix = indent + "└── "
+			nextIndent = indent + "    "
+		} else {
+			prefix = indent + "├── "
+			nextIndent = indent + "│   "
 		}
+
+		fmt.Print(prefix)
+		printNodeWithIndent(child, nextIndent)
 	}
 }
