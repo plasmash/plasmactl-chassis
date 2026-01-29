@@ -1,0 +1,14 @@
+runtime: plugin
+action:
+  id: chassis:rename
+  title: "Rename a chassis section"
+  description: "Rename a section and update playbook references"
+  arguments:
+    - name: old
+      title: Old Path
+      description: Current section path
+      required: true
+    - name: new
+      title: New Path
+      description: New section path
+      required: true

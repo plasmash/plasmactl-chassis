@@ -11,6 +11,7 @@ import (
 	"github.com/plasmash/plasmactl-chassis/actions/add"
 	"github.com/plasmash/plasmactl-chassis/actions/list"
 	"github.com/plasmash/plasmactl-chassis/actions/remove"
+	"github.com/plasmash/plasmactl-chassis/actions/rename"
 	"github.com/plasmash/plasmactl-chassis/actions/show"
 )
 
@@ -108,11 +109,28 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return remove.Execute()
 	}))
 
+	// chassis:rename - Rename a chassis section
+	renameYaml, _ := actionYamlFS.ReadFile("actions/rename/rename.yaml")
+	renameAct := action.NewFromYAML("chassis:rename", renameYaml)
+	renameAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		input := a.Input()
+		log, term := getLogger(a)
+
+		ren := &rename.Rename{
+			Old: input.Arg("old").(string),
+			New: input.Arg("new").(string),
+		}
+		ren.SetLogger(log)
+		ren.SetTerm(term)
+		return ren.Execute()
+	}))
+
 	return []*action.Action{
 		listAct,
 		showAct,
 		addAct,
 		removeAct,
+		renameAct,
 	}, nil
 }
 

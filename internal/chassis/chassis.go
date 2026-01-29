@@ -707,57 +707,114 @@ func LoadNodesByPlatform(dir string) (map[string][]Node, error) {
 	return result, nil
 }
 
-// ComponentAttachment represents a component attached to a chassis section
-type ComponentAttachment struct {
-	Component string
-	Playbook  string
-}
+// Rename renames a chassis section preserving YAML order
+func (c *Chassis) Rename(oldPath, newPath string) error {
+	oldParts := strings.Split(oldPath, ".")
+	newParts := strings.Split(newPath, ".")
 
-// LoadAttachments scans playbooks for component attachments to a chassis section
-func LoadAttachments(dir, section string) ([]ComponentAttachment, error) {
-	var attachments []ComponentAttachment
-
-	// Scan src/<layer>/<layer>.yaml playbooks
-	srcDir := filepath.Join(dir, "src")
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
+	if len(oldParts) != len(newParts) {
+		return fmt.Errorf("old and new paths must have the same depth")
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	// Find the differing segment (should be exactly one for a rename)
+	diffIdx := -1
+	for i := 0; i < len(oldParts); i++ {
+		if oldParts[i] != newParts[i] {
+			if diffIdx != -1 {
+				return fmt.Errorf("rename can only change one segment at a time")
+			}
+			diffIdx = i
 		}
+	}
 
-		playbookPath := filepath.Join(srcDir, entry.Name(), entry.Name()+".yaml")
-		data, err := os.ReadFile(playbookPath)
-		if err != nil {
-			continue
-		}
+	if diffIdx == -1 {
+		return fmt.Errorf("old and new paths are identical")
+	}
 
-		// Parse playbook
-		var plays []struct {
-			Hosts string   `yaml:"hosts"`
-			Roles []string `yaml:"roles"`
-		}
-		if err := yaml.Unmarshal(data, &plays); err != nil {
-			continue
-		}
+	// Update yaml.Node
+	if c.node != nil && len(c.node.Content) > 0 {
+		renameInNode(c.node.Content[0], oldParts, newParts, diffIdx, 0)
+	}
 
-		for _, play := range plays {
-			if play.Hosts == section {
-				for _, role := range play.Roles {
-					attachments = append(attachments, ComponentAttachment{
-						Component: role,
-						Playbook:  playbookPath,
-					})
+	// Update c.data for consistency
+	c.updateDataForRename(oldParts, newParts, diffIdx)
+
+	return nil
+}
+
+// renameInNode recursively finds and renames the target segment in yaml.Node
+func renameInNode(node *yaml.Node, oldParts, newParts []string, diffIdx, depth int) bool {
+	if node == nil || depth >= len(oldParts) {
+		return false
+	}
+
+	target := oldParts[depth]
+	newName := newParts[depth]
+
+	switch node.Kind {
+	case yaml.MappingNode:
+		for i := 0; i < len(node.Content); i += 2 {
+			key := node.Content[i]
+			value := node.Content[i+1]
+
+			if key.Value == target {
+				if depth == diffIdx {
+					// This is the segment to rename
+					key.Value = newName
+					return true
+				}
+				// Continue deeper
+				return renameInNode(value, oldParts, newParts, diffIdx, depth+1)
+			}
+		}
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			if item.Kind == yaml.ScalarNode && item.Value == target {
+				if depth == diffIdx {
+					item.Value = newName
+					return true
+				}
+			} else if item.Kind == yaml.MappingNode {
+				for j := 0; j < len(item.Content); j += 2 {
+					if item.Content[j].Value == target {
+						if depth == diffIdx {
+							item.Content[j].Value = newName
+							return true
+						}
+						return renameInNode(item.Content[j+1], oldParts, newParts, diffIdx, depth+1)
+					}
 				}
 			}
 		}
 	}
 
-	return attachments, nil
+	return false
+}
+
+// updateDataForRename updates c.data after a rename
+func (c *Chassis) updateDataForRename(oldParts, newParts []string, diffIdx int) {
+	if c.data == nil {
+		return
+	}
+
+	switch diffIdx {
+	case 0:
+		// Renaming root key
+		if data, exists := c.data[oldParts[0]]; exists {
+			c.data[newParts[0]] = data
+			delete(c.data, oldParts[0])
+		}
+	case 1:
+		// Renaming layer key
+		root := oldParts[0]
+		if c.data[root] != nil {
+			if data, exists := c.data[root][oldParts[1]]; exists {
+				c.data[root][newParts[1]] = data
+				delete(c.data[root], oldParts[1])
+			}
+		}
+	default:
+		// Renaming within sections - more complex, rebuild from scratch
+		// For now, just clear and let it be rebuilt on next load
+	}
 }
