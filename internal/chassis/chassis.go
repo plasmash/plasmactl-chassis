@@ -151,20 +151,16 @@ func (c *Chassis) Exists(section string) bool {
 }
 
 // Add adds a new section to the chassis preserving YAML order
-// Section format: root.layer.path.to.section (e.g., platform.foundation.cluster)
+// Section format: any dotted path (e.g., platform, platform.bite, platform.foundation.cluster)
 func (c *Chassis) Add(section string) error {
 	parts := strings.Split(section, ".")
-	if len(parts) < 3 {
-		return fmt.Errorf("invalid section format: need at least root.layer.section")
+	if len(parts) < 1 || section == "" {
+		return fmt.Errorf("section cannot be empty")
 	}
 
 	if c.Exists(section) {
 		return fmt.Errorf("section %q already exists", section)
 	}
-
-	root := parts[0]
-	layer := parts[1]
-	remaining := parts[2:]
 
 	// Work with yaml.Node to preserve order
 	if c.node == nil || len(c.node.Content) == 0 {
@@ -179,29 +175,58 @@ func (c *Chassis) Add(section string) error {
 
 	rootNode := c.node.Content[0]
 
-	// Find or create root key (e.g., "platform")
-	rootValueNode := findOrCreateMapKey(rootNode, root)
+	if len(parts) == 1 {
+		// Just a root key (e.g., "platform")
+		findOrCreateMapKey(rootNode, parts[0])
+	} else if len(parts) == 2 {
+		// Root and layer (e.g., "platform.bite")
+		root := parts[0]
+		layer := parts[1]
+		rootValueNode := findOrCreateMapKey(rootNode, root)
+		layerValueNode := findOrCreateMapKey(rootValueNode, layer)
+		// Ensure it's a sequence node (empty)
+		if layerValueNode.Kind != yaml.SequenceNode {
+			layerValueNode.Kind = yaml.SequenceNode
+			layerValueNode.Content = nil
+		}
+	} else {
+		// Full path (e.g., "platform.foundation.cluster")
+		root := parts[0]
+		layer := parts[1]
+		remaining := parts[2:]
 
-	// Find or create layer key (e.g., "foundation")
-	layerValueNode := findOrCreateMapKey(rootValueNode, layer)
+		rootValueNode := findOrCreateMapKey(rootNode, root)
+		layerValueNode := findOrCreateMapKey(rootValueNode, layer)
 
-	// Ensure it's a sequence node
-	if layerValueNode.Kind != yaml.SequenceNode {
-		layerValueNode.Kind = yaml.SequenceNode
-		layerValueNode.Content = nil
+		// Ensure it's a sequence node
+		if layerValueNode.Kind != yaml.SequenceNode {
+			layerValueNode.Kind = yaml.SequenceNode
+			layerValueNode.Content = nil
+		}
+
+		// Add the remaining path to the sequence
+		addPathToSequence(layerValueNode, remaining)
 	}
-
-	// Add the remaining path to the sequence
-	addPathToSequence(layerValueNode, remaining)
 
 	// Also update c.data for consistency
 	if c.data == nil {
 		c.data = make(map[string]map[string][]interface{})
 	}
-	if c.data[root] == nil {
-		c.data[root] = make(map[string][]interface{})
+	if len(parts) >= 2 {
+		root := parts[0]
+		layer := parts[1]
+		if c.data[root] == nil {
+			c.data[root] = make(map[string][]interface{})
+		}
+		if len(parts) > 2 {
+			c.data[root][layer] = addToSections(c.data[root][layer], parts[2:])
+		} else {
+			// Just ensure the layer exists
+			if c.data[root][layer] == nil {
+				c.data[root][layer] = []interface{}{}
+			}
+		}
 	}
-	c.data[root][layer] = addToSections(c.data[root][layer], remaining)
 
 	return nil
 }
@@ -309,45 +334,88 @@ func addPathToSequence(seqNode *yaml.Node, path []string) {
 // Remove removes a section from the chassis preserving YAML order
 func (c *Chassis) Remove(section string) error {
 	parts := strings.Split(section, ".")
-	if len(parts) < 3 {
-		return fmt.Errorf("invalid section format: need at least root.layer.section")
+	if len(parts) < 1 || section == "" {
+		return fmt.Errorf("section cannot be empty")
 	}
 
 	if !c.Exists(section) {
 		return fmt.Errorf("section %q does not exist", section)
 	}
 
-	root := parts[0]
-	layer := parts[1]
-	remaining := parts[2:]
-
 	// Remove from yaml.Node
 	if c.node != nil && len(c.node.Content) > 0 {
 		rootNode := c.node.Content[0]
 		if rootNode.Kind == yaml.MappingNode {
-			// Find root key
-			for i := 0; i < len(rootNode.Content); i += 2 {
-				if rootNode.Content[i].Value == root {
-					rootValueNode := rootNode.Content[i+1]
-					if rootValueNode.Kind == yaml.MappingNode {
-						// Find layer key
-						for j := 0; j < len(rootValueNode.Content); j += 2 {
-							if rootValueNode.Content[j].Value == layer {
-								layerValueNode := rootValueNode.Content[j+1]
-								if layerValueNode.Kind == yaml.SequenceNode {
-									removePathFromSequence(layerValueNode, remaining)
+			if len(parts) == 1 {
+				// Remove root key entirely
+				root := parts[0]
+				for i := 0; i < len(rootNode.Content); i += 2 {
+					if rootNode.Content[i].Value == root {
+						rootNode.Content = append(rootNode.Content[:i], rootNode.Content[i+2:]...)
+						break
+					}
+				}
+			} else if len(parts) == 2 {
+				// Remove layer from root
+				root := parts[0]
+				layer := parts[1]
+				for i := 0; i < len(rootNode.Content); i += 2 {
+					if rootNode.Content[i].Value == root {
+						rootValueNode := rootNode.Content[i+1]
+						if rootValueNode.Kind == yaml.MappingNode {
+							for j := 0; j < len(rootValueNode.Content); j += 2 {
+								if rootValueNode.Content[j].Value == layer {
+									rootValueNode.Content = append(rootValueNode.Content[:j], rootValueNode.Content[j+2:]...)
+									break
 								}
-								break
 							}
 						}
+						break
 					}
-					break
+				}
+			} else {
+				// Remove from nested structure
+				root := parts[0]
+				layer := parts[1]
+				remaining := parts[2:]
+				for i := 0; i < len(rootNode.Content); i += 2 {
+					if rootNode.Content[i].Value == root {
+						rootValueNode := rootNode.Content[i+1]
+						if rootValueNode.Kind == yaml.MappingNode {
+							for j := 0; j < len(rootValueNode.Content); j += 2 {
+								if rootValueNode.Content[j].Value == layer {
+									layerValueNode := rootValueNode.Content[j+1]
+									if layerValueNode.Kind == yaml.SequenceNode {
+										removePathFromSequence(layerValueNode, remaining)
+									}
+									break
+								}
+							}
+						}
+						break
+					}
 				}
 			}
 		}
 	}
 
 	// Also update c.data for consistency
+	if len(parts) == 1 {
+		delete(c.data, parts[0])
+		return nil
+	}
+
+	root := parts[0]
+	layer := parts[1]
+
+	if len(parts) == 2 {
+		if c.data[root] != nil {
+			delete(c.data[root], layer)
+		}
+		return nil
+	}
+
+	remaining := parts[2:]
 	var removed bool
 	c.data[root][layer], removed = removeFromSections(c.data[root][layer], remaining)
 	if !removed {
