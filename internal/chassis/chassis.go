@@ -49,10 +49,10 @@ func Load(dir string) (*Chassis, error) {
 	}, nil
 }
 
-// Save writes the chassis configuration to chassis.yaml
+// Save writes the chassis configuration to chassis.yaml preserving order
 func (c *Chassis) Save(dir string) error {
 	path := filepath.Join(dir, "chassis.yaml")
-	data, err := yaml.Marshal(c.data)
+	data, err := yaml.Marshal(c.node)
 	if err != nil {
 		return fmt.Errorf("failed to marshal chassis: %w", err)
 	}
@@ -150,7 +150,7 @@ func (c *Chassis) Exists(section string) bool {
 	return false
 }
 
-// Add adds a new section to the chassis
+// Add adds a new section to the chassis preserving YAML order
 // Section format: root.layer.path.to.section (e.g., platform.foundation.cluster)
 func (c *Chassis) Add(section string) error {
 	parts := strings.Split(section, ".")
@@ -166,15 +166,147 @@ func (c *Chassis) Add(section string) error {
 	layer := parts[1]
 	remaining := parts[2:]
 
+	// Work with yaml.Node to preserve order
+	if c.node == nil || len(c.node.Content) == 0 {
+		// Create new document node
+		c.node = &yaml.Node{
+			Kind: yaml.DocumentNode,
+			Content: []*yaml.Node{{
+				Kind: yaml.MappingNode,
+			}},
+		}
+	}
+
+	rootNode := c.node.Content[0]
+
+	// Find or create root key (e.g., "platform")
+	rootValueNode := findOrCreateMapKey(rootNode, root)
+
+	// Find or create layer key (e.g., "foundation")
+	layerValueNode := findOrCreateMapKey(rootValueNode, layer)
+
+	// Ensure it's a sequence node
+	if layerValueNode.Kind != yaml.SequenceNode {
+		layerValueNode.Kind = yaml.SequenceNode
+		layerValueNode.Content = nil
+	}
+
+	// Add the remaining path to the sequence
+	addPathToSequence(layerValueNode, remaining)
+
+	// Also update c.data for consistency
+	if c.data == nil {
+		c.data = make(map[string]map[string][]interface{})
+	}
 	if c.data[root] == nil {
 		c.data[root] = make(map[string][]interface{})
 	}
-
 	c.data[root][layer] = addToSections(c.data[root][layer], remaining)
+
 	return nil
 }
 
-// Remove removes a section from the chassis
+// findOrCreateMapKey finds a key in a mapping node or creates it at the end
+func findOrCreateMapKey(mapNode *yaml.Node, key string) *yaml.Node {
+	if mapNode.Kind != yaml.MappingNode {
+		mapNode.Kind = yaml.MappingNode
+		mapNode.Content = nil
+	}
+
+	// Look for existing key
+	for i := 0; i < len(mapNode.Content); i += 2 {
+		if mapNode.Content[i].Value == key {
+			return mapNode.Content[i+1]
+		}
+	}
+
+	// Key not found, create at end
+	keyNode := &yaml.Node{
+		Kind:  yaml.ScalarNode,
+		Tag:   "!!str",
+		Value: key,
+	}
+	valueNode := &yaml.Node{
+		Kind: yaml.MappingNode,
+	}
+	mapNode.Content = append(mapNode.Content, keyNode, valueNode)
+	return valueNode
+}
+
+// addPathToSequence adds a dotted path to a sequence node
+func addPathToSequence(seqNode *yaml.Node, path []string) {
+	if len(path) == 0 {
+		return
+	}
+
+	name := path[0]
+	remaining := path[1:]
+
+	if len(remaining) == 0 {
+		// Last segment - add as scalar
+		// Check if it already exists
+		for _, item := range seqNode.Content {
+			if item.Kind == yaml.ScalarNode && item.Value == name {
+				return // Already exists
+			}
+		}
+		// Add new scalar at end
+		seqNode.Content = append(seqNode.Content, &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   "!!str",
+			Value: name,
+		})
+		return
+	}
+
+	// Need nested structure - look for existing map with this key
+	for _, item := range seqNode.Content {
+		if item.Kind == yaml.MappingNode {
+			for i := 0; i < len(item.Content); i += 2 {
+				if item.Content[i].Value == name {
+					// Found existing key, recurse into its value
+					valueNode := item.Content[i+1]
+					if valueNode.Kind != yaml.SequenceNode {
+						valueNode.Kind = yaml.SequenceNode
+						valueNode.Content = nil
+					}
+					addPathToSequence(valueNode, remaining)
+					return
+				}
+			}
+		}
+	}
+
+	// Check if name exists as a scalar and convert it
+	for i, item := range seqNode.Content {
+		if item.Kind == yaml.ScalarNode && item.Value == name {
+			// Convert scalar to map with sequence
+			newSeq := &yaml.Node{Kind: yaml.SequenceNode}
+			addPathToSequence(newSeq, remaining)
+			seqNode.Content[i] = &yaml.Node{
+				Kind: yaml.MappingNode,
+				Content: []*yaml.Node{
+					{Kind: yaml.ScalarNode, Tag: "!!str", Value: name},
+					newSeq,
+				},
+			}
+			return
+		}
+	}
+
+	// Create new map entry at end of sequence
+	newSeq := &yaml.Node{Kind: yaml.SequenceNode}
+	addPathToSequence(newSeq, remaining)
+	seqNode.Content = append(seqNode.Content, &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: name},
+			newSeq,
+		},
+	})
+}
+
+// Remove removes a section from the chassis preserving YAML order
 func (c *Chassis) Remove(section string) error {
 	parts := strings.Split(section, ".")
 	if len(parts) < 3 {
@@ -189,6 +321,33 @@ func (c *Chassis) Remove(section string) error {
 	layer := parts[1]
 	remaining := parts[2:]
 
+	// Remove from yaml.Node
+	if c.node != nil && len(c.node.Content) > 0 {
+		rootNode := c.node.Content[0]
+		if rootNode.Kind == yaml.MappingNode {
+			// Find root key
+			for i := 0; i < len(rootNode.Content); i += 2 {
+				if rootNode.Content[i].Value == root {
+					rootValueNode := rootNode.Content[i+1]
+					if rootValueNode.Kind == yaml.MappingNode {
+						// Find layer key
+						for j := 0; j < len(rootValueNode.Content); j += 2 {
+							if rootValueNode.Content[j].Value == layer {
+								layerValueNode := rootValueNode.Content[j+1]
+								if layerValueNode.Kind == yaml.SequenceNode {
+									removePathFromSequence(layerValueNode, remaining)
+								}
+								break
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// Also update c.data for consistency
 	var removed bool
 	c.data[root][layer], removed = removeFromSections(c.data[root][layer], remaining)
 	if !removed {
@@ -196,6 +355,55 @@ func (c *Chassis) Remove(section string) error {
 	}
 
 	return nil
+}
+
+// removePathFromSequence removes a dotted path from a sequence node
+func removePathFromSequence(seqNode *yaml.Node, path []string) bool {
+	if len(path) == 0 {
+		return false
+	}
+
+	name := path[0]
+	remaining := path[1:]
+
+	for i, item := range seqNode.Content {
+		if len(remaining) == 0 {
+			// Looking for exact match to remove
+			if item.Kind == yaml.ScalarNode && item.Value == name {
+				seqNode.Content = append(seqNode.Content[:i], seqNode.Content[i+1:]...)
+				return true
+			}
+			if item.Kind == yaml.MappingNode {
+				for j := 0; j < len(item.Content); j += 2 {
+					if item.Content[j].Value == name {
+						// Remove entire map entry or just the key
+						if len(item.Content) == 2 {
+							// Only this key in map, remove the whole map item
+							seqNode.Content = append(seqNode.Content[:i], seqNode.Content[i+1:]...)
+						} else {
+							// Multiple keys, just remove this one
+							item.Content = append(item.Content[:j], item.Content[j+2:]...)
+						}
+						return true
+					}
+				}
+			}
+		} else {
+			// Need to recurse
+			if item.Kind == yaml.MappingNode {
+				for j := 0; j < len(item.Content); j += 2 {
+					if item.Content[j].Value == name {
+						valueNode := item.Content[j+1]
+						if valueNode.Kind == yaml.SequenceNode {
+							return removePathFromSequence(valueNode, remaining)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // GetTree returns the chassis as a tree structure for display
