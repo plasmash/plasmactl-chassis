@@ -1,9 +1,9 @@
 runtime: plugin
 action:
   title: Query
-  description: Query chassis sections for a node or component
+  description: Find chassis sections for node/component
   arguments:
     - name: identifier
       title: Identifier
-      description: Node hostname or component name to query
+      description: Node hostname or component name
       required: true

@@ -1,7 +1,7 @@
 runtime: plugin
 action:
   title: Show
-  description: Show allocations and attachments (all or for a section)
+  description: Show allocations and attachments
   arguments:
     - name: section
       title: Section
@@ -10,6 +10,6 @@ action:
     - name: platform
       shorthand: p
       title: Platform
-      description: "Filter nodes by platform instance (default: all)"
+      description: Filter nodes by platform instance
       type: string
       default: ""

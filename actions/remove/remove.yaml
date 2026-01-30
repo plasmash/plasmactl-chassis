@@ -1,7 +1,7 @@
 runtime: plugin
 action:
   title: Remove
-  description: Remove a chassis section from chassis.yaml
+  description: Remove a chassis section
   arguments:
     - name: section
       title: Section

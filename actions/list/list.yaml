@@ -1,7 +1,7 @@
 runtime: plugin
 action:
   title: List
-  description: List chassis sections from chassis.yaml
+  description: List chassis sections
   arguments:
     - name: section
       title: Section
