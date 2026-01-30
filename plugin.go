@@ -70,8 +70,13 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 
+		section := ""
+		if input.Arg("section") != nil {
+			section = input.Arg("section").(string)
+		}
+
 		show := &show.Show{
-			Section:  input.Arg("section").(string),
+			Section:  section,
 			Platform: input.Opt("platform").(string),
 		}
 		show.SetLogger(log)

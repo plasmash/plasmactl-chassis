@@ -1,12 +1,11 @@
 runtime: plugin
 action:
   title: Show
-  description: Show details for a chassis section
+  description: Show allocations and attachments (all or for a section)
   arguments:
     - name: section
       title: Section
-      description: Chassis section path (e.g., platform.foundation.cluster.control)
-      required: true
+      description: Chassis section path (optional, shows all if omitted)
   options:
     - name: platform
       shorthand: p
