@@ -1,6 +1,7 @@
 package show
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/launchrctl/launchr/pkg/action"
@@ -35,7 +36,7 @@ func (s *Show) Execute() error {
 		s.Log().Debug("Failed to load nodes", "error", err)
 	}
 
-	// Get sections to show
+	// Get sections to search
 	var sections []string
 	if s.Section != "" {
 		sections = c.FlattenWithPrefix(s.Section)
@@ -43,81 +44,84 @@ func (s *Show) Execute() error {
 		sections = c.Flatten()
 	}
 
-	// Collect allocations by section
-	type sectionInfo struct {
-		nodes       map[string][]string // platform -> hostnames
-		attachments []chassis.Attachment
+	// Collect all attachments with their sections
+	type componentInfo struct {
+		section   string
+		component string
 	}
-	sectionData := make(map[string]*sectionInfo)
+	var components []componentInfo
 
 	for _, section := range sections {
-		info := &sectionInfo{
-			nodes: make(map[string][]string),
-		}
-
-		// Get sorted platform names
-		var platforms []string
-		for platform := range nodesByPlatform {
-			if s.Platform == "" || s.Platform == platform {
-				platforms = append(platforms, platform)
-			}
-		}
-		sort.Strings(platforms)
-
-		// Find nodes for this exact section (not children)
-		for _, platform := range platforms {
-			nodes := nodesByPlatform[platform]
-			for _, node := range nodes {
-				for _, nc := range node.Chassis {
-					if nc == section {
-						info.nodes[platform] = append(info.nodes[platform], node.Hostname)
-						break
-					}
-				}
-			}
-		}
-
-		// Find attachments for this exact section
-		allAttachments, _ := chassis.LoadAttachments(".", section)
-		for _, a := range allAttachments {
+		attachments, _ := chassis.LoadAttachments(".", section)
+		for _, a := range attachments {
 			if a.Section == section {
-				info.attachments = append(info.attachments, a)
+				components = append(components, componentInfo{
+					section:   a.Section,
+					component: a.Component,
+				})
 			}
-		}
-
-		// Only include sections with allocations or attachments
-		if len(info.nodes) > 0 || len(info.attachments) > 0 {
-			sectionData[section] = info
 		}
 	}
 
-	if len(sectionData) == 0 {
+	// Sort components by section, then component name
+	sort.Slice(components, func(i, j int) bool {
+		if components[i].section != components[j].section {
+			return components[i].section < components[j].section
+		}
+		return components[i].component < components[j].component
+	})
+
+	// Collect all nodes
+	type nodeInfo struct {
+		platform string
+		hostname string
+	}
+	var nodes []nodeInfo
+
+	// Get sorted platform names
+	var platforms []string
+	for platform := range nodesByPlatform {
+		if s.Platform == "" || s.Platform == platform {
+			platforms = append(platforms, platform)
+		}
+	}
+	sort.Strings(platforms)
+
+	for _, platform := range platforms {
+		platformNodes := nodesByPlatform[platform]
+		matchingNodes := chassis.NodesForSection(platformNodes, s.Section)
+		if s.Section == "" {
+			// No section filter - include all nodes
+			matchingNodes = platformNodes
+		}
+		for _, node := range matchingNodes {
+			nodes = append(nodes, nodeInfo{
+				platform: platform,
+				hostname: node.Hostname,
+			})
+		}
+	}
+
+	// Sort nodes by platform, then hostname
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].platform != nodes[j].platform {
+			return nodes[i].platform < nodes[j].platform
+		}
+		return nodes[i].hostname < nodes[j].hostname
+	})
+
+	// Output
+	if len(components) == 0 && len(nodes) == 0 {
 		s.Term().Info().Println("No allocations or attachments found")
 		return nil
 	}
 
-	// Display results
-	for _, section := range sections {
-		info, exists := sectionData[section]
-		if !exists {
-			continue
-		}
+	for _, comp := range components {
+		fmt.Printf("component: [%s] %s\n", comp.section, comp.component)
+	}
 
-		s.Term().Info().Printfln("%s", section)
-
-		// Show nodes
-		for platform, hostnames := range info.nodes {
-			for _, hostname := range hostnames {
-				s.Term().Printfln("  node: [%s] %s", platform, hostname)
-			}
-		}
-
-		// Show attachments
-		for _, a := range info.attachments {
-			s.Term().Printfln("  component: %s", a.Component)
-		}
-
-		s.Term().Println()
+	for _, node := range nodes {
+		fmt.Printf("node: [%s] %s\n", node.platform, node.hostname)
 	}
 
 	return nil
