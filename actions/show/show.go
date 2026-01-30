@@ -119,7 +119,7 @@ func (s *Show) Execute() error {
 	}
 
 	if len(nodes) > 0 {
-		s.Term().Info().Println("Allocations")
+		s.Term().Info().Printfln("Allocations (%d nodes)", len(nodes))
 		for _, node := range nodes {
 			fmt.Printf("node\t%s\t%s\n", node.hostname, node.platform)
 		}
@@ -129,7 +129,7 @@ func (s *Show) Execute() error {
 		if len(nodes) > 0 {
 			fmt.Println()
 		}
-		s.Term().Info().Println("Attachments")
+		s.Term().Info().Printfln("Attachments (%d components)", len(components))
 		for _, comp := range components {
 			fmt.Printf("component\t%s\t%s\n", comp.component, comp.section)
 		}
