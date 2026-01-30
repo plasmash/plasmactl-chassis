@@ -119,11 +119,11 @@ func (s *Show) Execute() error {
 	}
 
 	for _, comp := range components {
-		fmt.Printf("component: [%s] %s\n", comp.section, comp.component)
+		fmt.Printf("component: %s [%s]\n", comp.component, comp.section)
 	}
 
 	for _, node := range nodes {
-		fmt.Printf("node: [%s] %s\n", node.platform, node.hostname)
+		fmt.Printf("node: %s [%s]\n", node.hostname, node.platform)
 	}
 
 	return nil
