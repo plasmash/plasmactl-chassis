@@ -3,6 +3,7 @@ package show
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-chassis/internal/chassis"
@@ -36,30 +37,31 @@ func (s *Show) Execute() error {
 		s.Log().Debug("Failed to load nodes", "error", err)
 	}
 
-	// Get sections to search
-	var sections []string
-	if s.Section != "" {
-		sections = c.FlattenWithPrefix(s.Section)
-	} else {
-		sections = c.Flatten()
-	}
-
-	// Collect all attachments with their sections
+	// Collect all attachments for the section (and children)
 	type componentInfo struct {
 		section   string
 		component string
 	}
 	var components []componentInfo
 
-	for _, section := range sections {
-		attachments, _ := chassis.LoadAttachments(".", section)
+	// Determine query section - use root if not specified
+	sectionToQuery := s.Section
+	if sectionToQuery == "" {
+		// Find root from chassis (first segment of first path)
+		roots := c.Flatten()
+		if len(roots) > 0 {
+			parts := strings.SplitN(roots[0], ".", 2)
+			sectionToQuery = parts[0]
+		}
+	}
+
+	if sectionToQuery != "" {
+		attachments, _ := chassis.LoadAttachments(".", sectionToQuery)
 		for _, a := range attachments {
-			if a.Section == section {
-				components = append(components, componentInfo{
-					section:   a.Section,
-					component: a.Component,
-				})
-			}
+			components = append(components, componentInfo{
+				section:   a.Section,
+				component: a.Component,
+			})
 		}
 	}
 
