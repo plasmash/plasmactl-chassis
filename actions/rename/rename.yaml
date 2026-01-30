@@ -1,7 +1,7 @@
 runtime: plugin
 action:
   title: Rename
-  description: Rename section and update playbooks
+  description: Rename section and update allocations and attachments
   arguments:
     - name: old
       title: Old Path

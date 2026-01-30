@@ -43,17 +43,28 @@ func (r *Rename) Execute() error {
 		return err
 	}
 
-	// Update playbook references
-	updated, err := chassis.UpdatePlaybookReferences(".", r.Old, r.New)
+	// Update attachments
+	updatedAttachments, err := chassis.UpdateAttachments(".", r.Old, r.New)
 	if err != nil {
-		r.Term().Warning().Printfln("Chassis renamed but failed to update playbooks: %s", err)
-		return nil
+		r.Term().Warning().Printfln("Chassis renamed but failed to update attachments: %s", err)
+	}
+
+	// Update allocations
+	updatedAllocations, err := chassis.UpdateAllocations(".", r.Old, r.New)
+	if err != nil {
+		r.Term().Warning().Printfln("Chassis renamed but failed to update allocations: %s", err)
 	}
 
 	r.Term().Success().Printfln("Renamed: %s → %s", r.Old, r.New)
-	if len(updated) > 0 {
-		r.Term().Info().Println("Updated playbooks:")
-		for _, p := range updated {
+	if len(updatedAttachments) > 0 {
+		r.Term().Info().Println("Updated attachments:")
+		for _, p := range updatedAttachments {
+			fmt.Printf("  - %s\n", p)
+		}
+	}
+	if len(updatedAllocations) > 0 {
+		r.Term().Info().Println("Updated allocations:")
+		for _, p := range updatedAllocations {
 			fmt.Printf("  - %s\n", p)
 		}
 	}

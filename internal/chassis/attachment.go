@@ -88,8 +88,8 @@ func HasAttachments(dir, section string) (bool, []Attachment, error) {
 	return len(attachments) > 0, attachments, nil
 }
 
-// UpdatePlaybookReferences renames chassis section references in all playbooks
-func UpdatePlaybookReferences(dir, oldSection, newSection string) ([]string, error) {
+// UpdateAttachments renames chassis section references in all playbooks
+func UpdateAttachments(dir, oldSection, newSection string) ([]string, error) {
 	var updatedFiles []string
 
 	srcDir := filepath.Join(dir, "src")
@@ -167,6 +167,104 @@ func updateHostsInNode(node *yaml.Node, oldSection, newSection string) bool {
 				}
 			} else {
 				if updateHostsInNode(value, oldSection, newSection) {
+					updated = true
+				}
+			}
+		}
+	}
+
+	return updated
+}
+
+// UpdateAllocations renames chassis section references in all node files
+func UpdateAllocations(dir, oldSection, newSection string) ([]string, error) {
+	var updatedFiles []string
+
+	instDir := filepath.Join(dir, "inst")
+	platforms, err := os.ReadDir(instDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	for _, platform := range platforms {
+		if !platform.IsDir() {
+			continue
+		}
+
+		nodesDir := filepath.Join(instDir, platform.Name(), "nodes")
+		nodeFiles, err := os.ReadDir(nodesDir)
+		if err != nil {
+			continue
+		}
+
+		for _, nodeFile := range nodeFiles {
+			if nodeFile.IsDir() || !strings.HasSuffix(nodeFile.Name(), ".yaml") {
+				continue
+			}
+
+			nodePath := filepath.Join(nodesDir, nodeFile.Name())
+			data, err := os.ReadFile(nodePath)
+			if err != nil {
+				continue
+			}
+
+			// Parse as yaml.Node to preserve formatting
+			var doc yaml.Node
+			if err := yaml.Unmarshal(data, &doc); err != nil {
+				continue
+			}
+
+			updated := updateChassisInNode(&doc, oldSection, newSection)
+			if updated {
+				newData, err := yaml.Marshal(&doc)
+				if err != nil {
+					continue
+				}
+				if err := os.WriteFile(nodePath, newData, 0644); err != nil {
+					continue
+				}
+				updatedFiles = append(updatedFiles, nodePath)
+			}
+		}
+	}
+
+	return updatedFiles, nil
+}
+
+// updateChassisInNode updates chassis array entries in a yaml.Node
+func updateChassisInNode(node *yaml.Node, oldSection, newSection string) bool {
+	updated := false
+
+	switch node.Kind {
+	case yaml.DocumentNode:
+		for _, child := range node.Content {
+			if updateChassisInNode(child, oldSection, newSection) {
+				updated = true
+			}
+		}
+	case yaml.MappingNode:
+		for i := 0; i < len(node.Content); i += 2 {
+			key := node.Content[i]
+			value := node.Content[i+1]
+
+			if key.Value == "chassis" && value.Kind == yaml.SequenceNode {
+				// Update chassis array entries
+				for _, item := range value.Content {
+					if item.Kind == yaml.ScalarNode {
+						if item.Value == oldSection {
+							item.Value = newSection
+							updated = true
+						} else if strings.HasPrefix(item.Value, oldSection+".") {
+							item.Value = newSection + item.Value[len(oldSection):]
+							updated = true
+						}
+					}
+				}
+			} else {
+				if updateChassisInNode(value, oldSection, newSection) {
 					updated = true
 				}
 			}
