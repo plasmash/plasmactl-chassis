@@ -118,12 +118,21 @@ func (s *Show) Execute() error {
 		return nil
 	}
 
-	for _, node := range nodes {
-		fmt.Printf("node: %s [%s]\n", node.hostname, node.platform)
+	if len(nodes) > 0 {
+		s.Term().Info().Println("Allocations")
+		for _, node := range nodes {
+			fmt.Printf("node\t%s\t%s\n", node.hostname, node.platform)
+		}
 	}
 
-	for _, comp := range components {
-		fmt.Printf("component: %s [%s]\n", comp.component, comp.section)
+	if len(components) > 0 {
+		if len(nodes) > 0 {
+			fmt.Println()
+		}
+		s.Term().Info().Println("Attachments")
+		for _, comp := range components {
+			fmt.Printf("component\t%s\t%s\n", comp.component, comp.section)
+		}
 	}
 
 	return nil
