@@ -10,6 +10,7 @@ import (
 
 	"github.com/plasmash/plasmactl-chassis/actions/add"
 	"github.com/plasmash/plasmactl-chassis/actions/list"
+	"github.com/plasmash/plasmactl-chassis/actions/query"
 	"github.com/plasmash/plasmactl-chassis/actions/remove"
 	"github.com/plasmash/plasmactl-chassis/actions/rename"
 	"github.com/plasmash/plasmactl-chassis/actions/show"
@@ -130,12 +131,28 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return ren.Execute()
 	}))
 
+	// chassis:query - Query chassis sections for a node or component
+	queryYaml, _ := actionYamlFS.ReadFile("actions/query/query.yaml")
+	queryAct := action.NewFromYAML("chassis:query", queryYaml)
+	queryAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		input := a.Input()
+		log, term := getLogger(a)
+
+		q := &query.Query{
+			Identifier: input.Arg("identifier").(string),
+		}
+		q.SetLogger(log)
+		q.SetTerm(term)
+		return q.Execute()
+	}))
+
 	return []*action.Action{
 		listAct,
 		showAct,
 		addAct,
 		removeAct,
 		renameAct,
+		queryAct,
 	}, nil
 }
 
