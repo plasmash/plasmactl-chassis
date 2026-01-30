@@ -40,10 +40,10 @@ func LoadAttachments(dir, section string) ([]Attachment, error) {
 			continue
 		}
 
-		// Parse playbook
+		// Parse playbook - roles can be strings or dicts with "role" key
 		var plays []struct {
-			Hosts string   `yaml:"hosts"`
-			Roles []string `yaml:"roles"`
+			Hosts string        `yaml:"hosts"`
+			Roles []interface{} `yaml:"roles"`
 		}
 		if err := yaml.Unmarshal(data, &plays); err != nil {
 			continue
@@ -52,12 +52,25 @@ func LoadAttachments(dir, section string) ([]Attachment, error) {
 		for _, play := range plays {
 			// Match exact section or child sections
 			if play.Hosts == section || strings.HasPrefix(play.Hosts, section+".") {
-				for _, role := range play.Roles {
-					attachments = append(attachments, Attachment{
-						Component: role,
-						Playbook:  playbookPath,
-						Section:   play.Hosts,
-					})
+				for _, r := range play.Roles {
+					var roleName string
+					switch role := r.(type) {
+					case string:
+						// Simple string: "- foundation.applications.os"
+						roleName = role
+					case map[string]interface{}:
+						// Dict with role key: "- role: foundation.applications.cluster"
+						if name, ok := role["role"].(string); ok {
+							roleName = name
+						}
+					}
+					if roleName != "" {
+						attachments = append(attachments, Attachment{
+							Component: roleName,
+							Playbook:  playbookPath,
+							Section:   play.Hosts,
+						})
+					}
 				}
 			}
 		}
