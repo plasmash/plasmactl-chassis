@@ -664,12 +664,13 @@ func loadNodesFromPlatform(instDir, platform string) ([]Node, error) {
 	return nodes, nil
 }
 
-// NodesForSection returns nodes allocated to a specific chassis section
+// NodesForSection returns nodes allocated to a chassis section or its children
 func NodesForSection(nodes []Node, section string) []Node {
 	var result []Node
 	for _, node := range nodes {
 		for _, c := range node.Chassis {
-			if c == section {
+			// Match exact section or child sections
+			if c == section || strings.HasPrefix(c, section+".") {
 				result = append(result, node)
 				break
 			}
