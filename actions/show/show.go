@@ -158,8 +158,8 @@ func (s *Show) Execute() error {
 	if len(nodes) > 0 {
 		s.Term().Info().Printfln("Allocations (%d nodes)", len(nodes))
 		for _, n := range nodes {
-			// Show all effective sections for the node
-			fmt.Printf("node\t%s\t%s\t%s\n", n.hostname, n.platform, strings.Join(n.sections, ","))
+			// Show node with section count - use chassis:query for details
+			fmt.Printf("node\t%s\t%s\t(%d sections)\n", n.hostname, n.platform, len(n.sections))
 		}
 	}
 

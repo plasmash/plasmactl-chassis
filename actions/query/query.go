@@ -5,7 +5,9 @@ import (
 	"sort"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-chassis/internal/chassis"
+	"github.com/plasmash/plasmactl-chassis/pkg/chassis"
+	"github.com/plasmash/plasmactl-component/pkg/component"
+	"github.com/plasmash/plasmactl-node/pkg/node"
 )
 
 // Query implements the chassis:query command
@@ -18,48 +20,42 @@ type Query struct {
 
 // Execute runs the query action
 func (q *Query) Execute() error {
+	// Load chassis for distribution computation
+	c, err := chassis.Load(".")
+	if err != nil {
+		return err
+	}
+
 	var sections []string
 
-	// Search in nodes (allocations)
-	nodesByPlatform, err := chassis.LoadNodesByPlatform(".")
+	// Search in nodes (allocations with distribution)
+	nodesByPlatform, err := node.LoadByPlatform(".")
 	if err != nil {
 		q.Log().Debug("Failed to load nodes", "error", err)
 	}
 
 	for _, nodes := range nodesByPlatform {
-		for _, node := range nodes {
-			if node.Hostname == q.Identifier {
-				sections = append(sections, node.Chassis...)
+		// Compute effective allocations for all nodes in this platform
+		allocations := nodes.Allocations(c)
+
+		for _, n := range nodes {
+			if n.Hostname == q.Identifier {
+				// Use effective allocations (after distribution)
+				sections = append(sections, allocations[n.Hostname]...)
 			}
 		}
 	}
 
 	// Search in attachments (components)
 	if len(sections) == 0 {
-		// Load chassis to get root
-		c, err := chassis.Load(".")
+		components, err := component.LoadFromPlaybooks(".")
 		if err != nil {
-			return err
+			q.Log().Debug("Failed to load components", "error", err)
 		}
 
-		// Find root from chassis
-		roots := c.Flatten()
-		if len(roots) > 0 {
-			// Get the root (first segment)
-			root := roots[0]
-			for i, ch := range roots[0] {
-				if ch == '.' {
-					root = roots[0][:i]
-					break
-				}
-			}
-
-			attachments, _ := chassis.LoadAttachments(".", root)
-			for _, a := range attachments {
-				if a.Component == q.Identifier {
-					sections = append(sections, a.Section)
-				}
-			}
+		attachmentsMap := components.Attachments(c)
+		if attachedSections, ok := attachmentsMap[q.Identifier]; ok {
+			sections = append(sections, attachedSections...)
 		}
 	}
 
