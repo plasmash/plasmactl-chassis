@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-chassis/internal/chassis"
+	"github.com/plasmash/plasmactl-chassis/pkg/chassis"
+	"github.com/plasmash/plasmactl-component/pkg/component"
+	"github.com/plasmash/plasmactl-node/pkg/node"
 )
 
 // Show implements the chassis:show command
@@ -31,18 +33,29 @@ func (s *Show) Execute() error {
 		return nil
 	}
 
-	// Load all nodes
-	nodesByPlatform, err := chassis.LoadNodesByPlatform(".")
+	// Load all nodes by platform
+	nodesByPlatform, err := node.LoadByPlatform(".")
 	if err != nil {
 		s.Log().Debug("Failed to load nodes", "error", err)
 	}
 
-	// Collect all attachments for the section (and children)
-	type componentInfo struct {
-		section   string
-		component string
+	// Filter by platform if specified
+	if s.Platform != "" {
+		filtered := make(map[string]node.Nodes)
+		if nodes, ok := nodesByPlatform[s.Platform]; ok {
+			filtered[s.Platform] = nodes
+		}
+		nodesByPlatform = filtered
 	}
-	var components []componentInfo
+
+	// Load components from playbooks
+	components, err := component.LoadFromPlaybooks(".")
+	if err != nil {
+		s.Log().Debug("Failed to load components", "error", err)
+	}
+
+	// Get attachments map (component → sections)
+	attachmentsMap := components.Attachments(c)
 
 	// Determine query section - use root if not specified
 	sectionToQuery := s.Section
@@ -55,51 +68,75 @@ func (s *Show) Execute() error {
 		}
 	}
 
-	if sectionToQuery != "" {
-		attachments, _ := chassis.LoadAttachments(".", sectionToQuery)
-		for _, a := range attachments {
-			components = append(components, componentInfo{
-				section:   a.Section,
-				component: a.Component,
-			})
+	// Collect component attachments for the section
+	type componentInfo struct {
+		section   string
+		component string
+	}
+	var compInfos []componentInfo
+
+	for compName, sections := range attachmentsMap {
+		for _, sect := range sections {
+			// Check if section matches query (exact match or descendant)
+			if sectionToQuery == "" || sect == sectionToQuery || chassis.IsDescendantOf(sect, sectionToQuery) {
+				compInfos = append(compInfos, componentInfo{
+					section:   sect,
+					component: compName,
+				})
+			}
 		}
 	}
 
 	// Sort components by section, then component name
-	sort.Slice(components, func(i, j int) bool {
-		if components[i].section != components[j].section {
-			return components[i].section < components[j].section
+	sort.Slice(compInfos, func(i, j int) bool {
+		if compInfos[i].section != compInfos[j].section {
+			return compInfos[i].section < compInfos[j].section
 		}
-		return components[i].component < components[j].component
+		return compInfos[i].component < compInfos[j].component
 	})
 
-	// Collect all nodes
+	// Collect all node allocations (EFFECTIVE - after distribution)
 	type nodeInfo struct {
 		platform string
 		hostname string
+		sections []string // effective sections after distribution
 	}
 	var nodes []nodeInfo
 
 	// Get sorted platform names
 	var platforms []string
 	for platform := range nodesByPlatform {
-		if s.Platform == "" || s.Platform == platform {
-			platforms = append(platforms, platform)
-		}
+		platforms = append(platforms, platform)
 	}
 	sort.Strings(platforms)
 
 	for _, platform := range platforms {
 		platformNodes := nodesByPlatform[platform]
-		matchingNodes := chassis.NodesForSection(platformNodes, s.Section)
-		if s.Section == "" {
-			// No section filter - include all nodes
-			matchingNodes = platformNodes
-		}
-		for _, node := range matchingNodes {
+
+		// Compute effective allocations for all nodes in this platform
+		allocations := platformNodes.Allocations(c)
+
+		for _, n := range platformNodes {
+			effectiveSections := allocations[n.Hostname]
+
+			// If section filter is specified, check if node is allocated to it
+			if s.Section != "" {
+				found := false
+				for _, sect := range effectiveSections {
+					if sect == s.Section || chassis.IsDescendantOf(sect, s.Section) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+
 			nodes = append(nodes, nodeInfo{
 				platform: platform,
-				hostname: node.Hostname,
+				hostname: n.Hostname,
+				sections: effectiveSections,
 			})
 		}
 	}
@@ -113,24 +150,25 @@ func (s *Show) Execute() error {
 	})
 
 	// Output
-	if len(components) == 0 && len(nodes) == 0 {
+	if len(compInfos) == 0 && len(nodes) == 0 {
 		s.Term().Info().Println("No allocations or attachments found")
 		return nil
 	}
 
 	if len(nodes) > 0 {
 		s.Term().Info().Printfln("Allocations (%d nodes)", len(nodes))
-		for _, node := range nodes {
-			fmt.Printf("node\t%s\t%s\n", node.hostname, node.platform)
+		for _, n := range nodes {
+			// Show all effective sections for the node
+			fmt.Printf("node\t%s\t%s\t%s\n", n.hostname, n.platform, strings.Join(n.sections, ","))
 		}
 	}
 
-	if len(components) > 0 {
+	if len(compInfos) > 0 {
 		if len(nodes) > 0 {
 			fmt.Println()
 		}
-		s.Term().Info().Printfln("Attachments (%d components)", len(components))
-		for _, comp := range components {
+		s.Term().Info().Printfln("Attachments (%d components)", len(compInfos))
+		for _, comp := range compInfos {
 			fmt.Printf("component\t%s\t%s\n", comp.component, comp.section)
 		}
 	}
