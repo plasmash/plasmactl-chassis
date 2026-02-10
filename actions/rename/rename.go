@@ -1,8 +1,6 @@
 package rename
 
 import (
-	"fmt"
-
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-chassis/internal/chassis"
 )
@@ -59,13 +57,13 @@ func (r *Rename) Execute() error {
 	if len(updatedAttachments) > 0 {
 		r.Term().Info().Println("Updated attachments:")
 		for _, p := range updatedAttachments {
-			fmt.Printf("  - %s\n", p)
+			r.Term().Printfln("  - %s", p)
 		}
 	}
 	if len(updatedAllocations) > 0 {
 		r.Term().Info().Println("Updated allocations:")
 		for _, p := range updatedAllocations {
-			fmt.Printf("  - %s\n", p)
+			r.Term().Printfln("  - %s", p)
 		}
 	}
 

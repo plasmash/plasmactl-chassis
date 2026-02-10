@@ -13,7 +13,7 @@ action:
       title: Kind
       description: Identifier kind to skip auto-detection (node, component)
       type: string
-      enum: [node, component]
+      enum: ["", node, component]
       default: ""
   result:
     type: object
