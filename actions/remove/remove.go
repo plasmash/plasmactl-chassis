@@ -12,7 +12,7 @@ type Remove struct {
 	action.WithLogger
 	action.WithTerm
 
-	Section string
+	Chassis string
 }
 
 // Execute runs the remove action
@@ -22,8 +22,8 @@ func (r *Remove) Execute() error {
 		return err
 	}
 
-	if !c.Exists(r.Section) {
-		r.Term().Error().Printfln("Section %q not found", r.Section)
+	if !c.Exists(r.Chassis) {
+		r.Term().Error().Printfln("Chassis %q not found", r.Chassis)
 		return nil
 	}
 
@@ -35,31 +35,31 @@ func (r *Remove) Execute() error {
 
 	var allocatedNodes []string
 	for platform, nodes := range nodesByPlatform {
-		for _, node := range chassis.NodesForSection(nodes, r.Section) {
+		for _, node := range chassis.NodesForChassis(nodes, r.Chassis) {
 			allocatedNodes = append(allocatedNodes, fmt.Sprintf("[%s] %s", platform, node.Hostname))
 		}
 	}
 
 	if len(allocatedNodes) > 0 {
-		r.Term().Error().Printfln("Cannot remove section %q: nodes are allocated", r.Section)
+		r.Term().Error().Printfln("Cannot remove chassis path %q: nodes are allocated", r.Chassis)
 		r.Term().Println()
 		r.Term().Info().Println("Allocated nodes:")
 		for _, n := range allocatedNodes {
 			r.Term().Printfln("  %s", n)
 		}
 		r.Term().Println()
-		r.Term().Info().Println("Use node:allocate <hostname> <section>- to deallocate first")
+		r.Term().Info().Println("Use node:allocate <hostname> <chassis>- to deallocate first")
 		return nil
 	}
 
 	// Check for attached components
-	attachments, err := chassis.LoadAttachments(".", r.Section)
+	attachments, err := chassis.LoadAttachments(".", r.Chassis)
 	if err != nil {
 		r.Log().Debug("Failed to load attachments", "error", err)
 	}
 
 	if len(attachments) > 0 {
-		r.Term().Error().Printfln("Cannot remove section %q: components are attached", r.Section)
+		r.Term().Error().Printfln("Cannot remove chassis path %q: components are attached", r.Chassis)
 		r.Term().Println()
 		r.Term().Info().Println("Attached components:")
 		for _, a := range attachments {
@@ -71,7 +71,7 @@ func (r *Remove) Execute() error {
 	}
 
 	// Safe to remove
-	if err := c.Remove(r.Section); err != nil {
+	if err := c.Remove(r.Chassis); err != nil {
 		return err
 	}
 
@@ -79,6 +79,6 @@ func (r *Remove) Execute() error {
 		return err
 	}
 
-	r.Term().Success().Printfln("Removed: %s", r.Section)
+	r.Term().Success().Printfln("Removed: %s", r.Chassis)
 	return nil
 }

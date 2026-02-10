@@ -1,11 +1,11 @@
 runtime: plugin
 action:
   title: List
-  description: List chassis sections
+  description: List chassis paths
   arguments:
-    - name: section
-      title: Section
-      description: Chassis section path to filter (shows section and children)
+    - name: chassis
+      title: Chassis
+      description: Chassis path to filter (shows path and children)
       required: false
   options:
     - name: tree
@@ -14,3 +14,11 @@ action:
       description: Show as tree instead of flat list
       type: boolean
       default: false
+  result:
+    type: object
+    properties:
+      chassis:
+        type: array
+        description: List of chassis paths
+        items:
+          type: string

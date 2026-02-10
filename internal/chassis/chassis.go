@@ -60,7 +60,7 @@ func (c *Chassis) Save(dir string) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// Flatten returns all chassis section paths preserving YAML order
+// Flatten returns all chassis paths preserving YAML order
 func (c *Chassis) Flatten() []string {
 	if c.node == nil || len(c.node.Content) == 0 {
 		return nil
@@ -140,26 +140,26 @@ func (c *Chassis) FlattenWithPrefix(prefix string) []string {
 	return filtered
 }
 
-// Exists checks if a section path exists in the chassis
-func (c *Chassis) Exists(section string) bool {
+// Exists checks if a chassis path exists
+func (c *Chassis) Exists(chassisPath string) bool {
 	for _, path := range c.Flatten() {
-		if path == section {
+		if path == chassisPath {
 			return true
 		}
 	}
 	return false
 }
 
-// Add adds a new section to the chassis preserving YAML order
-// Section format: any dotted path (e.g., platform, platform.bite, platform.foundation.cluster)
-func (c *Chassis) Add(section string) error {
-	parts := strings.Split(section, ".")
-	if len(parts) < 1 || section == "" {
-		return fmt.Errorf("section cannot be empty")
+// Add adds a new chassis path preserving YAML order
+// Path format: any dotted path (e.g., platform, platform.bite, platform.foundation.cluster)
+func (c *Chassis) Add(chassisPath string) error {
+	parts := strings.Split(chassisPath, ".")
+	if len(parts) < 1 || chassisPath == "" {
+		return fmt.Errorf("chassis path cannot be empty")
 	}
 
-	if c.Exists(section) {
-		return fmt.Errorf("section %q already exists", section)
+	if c.Exists(chassisPath) {
+		return fmt.Errorf("chassis path %q already exists", chassisPath)
 	}
 
 	// Work with yaml.Node to preserve order
@@ -219,7 +219,7 @@ func (c *Chassis) Add(section string) error {
 			c.data[root] = make(map[string][]interface{})
 		}
 		if len(parts) > 2 {
-			c.data[root][layer] = addToSections(c.data[root][layer], parts[2:])
+			c.data[root][layer] = addChassisPath(c.data[root][layer], parts[2:])
 		} else {
 			// Just ensure the layer exists
 			if c.data[root][layer] == nil {
@@ -331,15 +331,15 @@ func addPathToSequence(seqNode *yaml.Node, path []string) {
 	})
 }
 
-// Remove removes a section from the chassis preserving YAML order
-func (c *Chassis) Remove(section string) error {
-	parts := strings.Split(section, ".")
-	if len(parts) < 1 || section == "" {
-		return fmt.Errorf("section cannot be empty")
+// Remove removes a chassis path preserving YAML order
+func (c *Chassis) Remove(chassisPath string) error {
+	parts := strings.Split(chassisPath, ".")
+	if len(parts) < 1 || chassisPath == "" {
+		return fmt.Errorf("chassis path cannot be empty")
 	}
 
-	if !c.Exists(section) {
-		return fmt.Errorf("section %q does not exist", section)
+	if !c.Exists(chassisPath) {
+		return fmt.Errorf("chassis path %q does not exist", chassisPath)
 	}
 
 	// Remove from yaml.Node
@@ -417,9 +417,9 @@ func (c *Chassis) Remove(section string) error {
 
 	remaining := parts[2:]
 	var removed bool
-	c.data[root][layer], removed = removeFromSections(c.data[root][layer], remaining)
+	c.data[root][layer], removed = removeChassisPath(c.data[root][layer], remaining)
 	if !removed {
-		return fmt.Errorf("failed to remove section %q", section)
+		return fmt.Errorf("failed to remove chassis path %q", chassisPath)
 	}
 
 	return nil
@@ -478,17 +478,17 @@ func removePathFromSequence(seqNode *yaml.Node, path []string) bool {
 func (c *Chassis) GetTree() map[string]interface{} {
 	tree := make(map[string]interface{})
 	for root, layers := range c.data {
-		for layer, sections := range layers {
-			tree[root+"."+layer] = sectionsToTree(sections)
+		for layer, chassis := range layers {
+			tree[root+"."+layer] = chassisToTree(chassis)
 		}
 	}
 	return tree
 }
 
-// addToSections adds a path to the sections structure
-func addToSections(sections []interface{}, path []string) []interface{} {
+// addChassisPath adds a chassis path to the nested structure
+func addChassisPath(chassis []interface{}, path []string) []interface{} {
 	if len(path) == 0 {
-		return sections
+		return chassis
 	}
 
 	name := path[0]
@@ -497,95 +497,95 @@ func addToSections(sections []interface{}, path []string) []interface{} {
 	// If this is the last segment, add as string
 	if len(remaining) == 0 {
 		// Check if it already exists
-		for _, s := range sections {
-			if str, ok := s.(string); ok && str == name {
-				return sections
+		for _, c := range chassis {
+			if str, ok := c.(string); ok && str == name {
+				return chassis
 			}
 		}
-		return append(sections, name)
+		return append(chassis, name)
 	}
 
 	// Need to add nested structure
-	for i, s := range sections {
-		if m, ok := s.(map[string]interface{}); ok {
+	for i, c := range chassis {
+		if m, ok := c.(map[string]interface{}); ok {
 			if sub, exists := m[name]; exists {
 				if subSlice, ok := sub.([]interface{}); ok {
-					m[name] = addToSections(subSlice, remaining)
-					return sections
+					m[name] = addChassisPath(subSlice, remaining)
+					return chassis
 				}
 			}
 		}
-		if str, ok := s.(string); ok && str == name {
+		if str, ok := c.(string); ok && str == name {
 			// Convert string to map with nested content
-			sections[i] = map[string]interface{}{
-				name: addToSections(nil, remaining),
+			chassis[i] = map[string]interface{}{
+				name: addChassisPath(nil, remaining),
 			}
-			return sections
+			return chassis
 		}
 	}
 
 	// Create new nested structure
 	newMap := map[string]interface{}{
-		name: addToSections(nil, remaining),
+		name: addChassisPath(nil, remaining),
 	}
-	return append(sections, newMap)
+	return append(chassis, newMap)
 }
 
-// removeFromSections removes a path from the sections structure
-func removeFromSections(sections []interface{}, path []string) ([]interface{}, bool) {
+// removeChassisPath removes a chassis path from the nested structure
+func removeChassisPath(chassis []interface{}, path []string) ([]interface{}, bool) {
 	if len(path) == 0 {
-		return sections, false
+		return chassis, false
 	}
 
 	name := path[0]
 	remaining := path[1:]
 
-	for i, s := range sections {
+	for i, c := range chassis {
 		// Check string match
-		if str, ok := s.(string); ok && str == name && len(remaining) == 0 {
-			return append(sections[:i], sections[i+1:]...), true
+		if str, ok := c.(string); ok && str == name && len(remaining) == 0 {
+			return append(chassis[:i], chassis[i+1:]...), true
 		}
 
 		// Check map match
-		if m, ok := s.(map[string]interface{}); ok {
+		if m, ok := c.(map[string]interface{}); ok {
 			if sub, exists := m[name]; exists {
 				if len(remaining) == 0 {
 					// Remove the entire map entry
 					delete(m, name)
 					if len(m) == 0 {
-						return append(sections[:i], sections[i+1:]...), true
+						return append(chassis[:i], chassis[i+1:]...), true
 					}
-					return sections, true
+					return chassis, true
 				}
 				if subSlice, ok := sub.([]interface{}); ok {
-					newSub, removed := removeFromSections(subSlice, remaining)
+					newSub, removed := removeChassisPath(subSlice, remaining)
 					if removed {
 						m[name] = newSub
-						return sections, true
+						return chassis, true
 					}
 				}
 			}
 		}
 	}
 
-	return sections, false
+	return chassis, false
 }
 
-// sectionsToTree converts sections to a displayable tree
-func sectionsToTree(sections []interface{}) interface{} {
-	if len(sections) == 0 {
+// chassisToTree converts chassis structure to a displayable tree
+func chassisToTree(chassis []interface{}) interface{} {
+	if len(chassis) == 0 {
 		return nil
 	}
 
 	result := make(map[string]interface{})
-	for _, s := range sections {
-		switch section := s.(type) {
+	for _, c := range chassis {
+		switch item := c.(type) {
 		case string:
-			result[section] = nil
+			result[item] = nil
 		case map[string]interface{}:
-			for name, sub := range section {
+			for name, sub := range item {
 				if subSlice, ok := sub.([]interface{}); ok {
-					result[name] = sectionsToTree(subSlice)
+					result[name] = chassisToTree(subSlice)
 				} else {
 					result[name] = nil
 				}
@@ -664,13 +664,13 @@ func loadNodesFromPlatform(instDir, platform string) ([]Node, error) {
 	return nodes, nil
 }
 
-// NodesForSection returns nodes allocated to a chassis section or its children
-func NodesForSection(nodes []Node, section string) []Node {
+// NodesForChassis returns nodes allocated to a chassis path or its children
+func NodesForChassis(nodes []Node, chassisPath string) []Node {
 	var result []Node
 	for _, node := range nodes {
 		for _, c := range node.Chassis {
-			// Match exact section or child sections
-			if c == section || strings.HasPrefix(c, section+".") {
+			// Match exact chassis path or children
+			if c == chassisPath || strings.HasPrefix(c, chassisPath+".") {
 				result = append(result, node)
 				break
 			}
@@ -708,7 +708,7 @@ func LoadNodesByPlatform(dir string) (map[string][]Node, error) {
 	return result, nil
 }
 
-// Rename renames a chassis section preserving YAML order
+// Rename renames a chassis path preserving YAML order
 func (c *Chassis) Rename(oldPath, newPath string) error {
 	oldParts := strings.Split(oldPath, ".")
 	newParts := strings.Split(newPath, ".")
@@ -815,7 +815,48 @@ func (c *Chassis) updateDataForRename(oldParts, newParts []string, diffIdx int) 
 			}
 		}
 	default:
-		// Renaming within sections - more complex, rebuild from scratch
-		// For now, just clear and let it be rebuilt on next load
+		// Renaming within nested chassis structure
+		root := oldParts[0]
+		layer := oldParts[1]
+		if c.data[root] != nil && c.data[root][layer] != nil {
+			c.data[root][layer] = renameInChassisData(c.data[root][layer], oldParts[2:], newParts[2:], diffIdx-2)
+		}
 	}
+}
+
+// renameInChassisData renames a path segment within the chassis data structure
+func renameInChassisData(chassis []interface{}, oldPath, newPath []string, diffIdx int) []interface{} {
+	if len(oldPath) == 0 || diffIdx < 0 {
+		return chassis
+	}
+
+	target := oldPath[0]
+	newName := newPath[0]
+
+	for i, item := range chassis {
+		switch v := item.(type) {
+		case string:
+			if v == target && diffIdx == 0 {
+				// Rename this string entry
+				chassis[i] = newName
+				return chassis
+			}
+		case map[string]interface{}:
+			if sub, exists := v[target]; exists {
+				if diffIdx == 0 {
+					// Rename the key in this map
+					v[newName] = sub
+					delete(v, target)
+					return chassis
+				}
+				// Recurse deeper
+				if subSlice, ok := sub.([]interface{}); ok {
+					v[target] = renameInChassisData(subSlice, oldPath[1:], newPath[1:], diffIdx-1)
+					return chassis
+				}
+			}
+		}
+	}
+
+	return chassis
 }

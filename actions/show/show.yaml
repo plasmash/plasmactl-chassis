@@ -3,9 +3,9 @@ action:
   title: Show
   description: Show allocations and attachments
   arguments:
-    - name: section
-      title: Section
-      description: Chassis section path (optional, shows all if omitted)
+    - name: chassis
+      title: Chassis
+      description: Chassis path (optional, shows all if omitted)
   options:
     - name: platform
       shorthand: p
@@ -13,3 +13,38 @@ action:
       description: Filter nodes by platform instance
       type: string
       default: ""
+  result:
+    type: object
+    properties:
+      chassis:
+        type: string
+        description: Filtered chassis path (if specified)
+      allocations:
+        type: array
+        description: Node allocations
+        items:
+          type: object
+          properties:
+            hostname:
+              type: string
+              description: Node hostname
+            platform:
+              type: string
+              description: Platform instance
+            chassis:
+              type: array
+              description: Effective chassis paths for this node
+              items:
+                type: string
+      attachments:
+        type: array
+        description: Component attachments
+        items:
+          type: object
+          properties:
+            component:
+              type: string
+              description: Component name
+            chassis:
+              type: string
+              description: Chassis path

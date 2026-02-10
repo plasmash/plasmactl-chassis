@@ -1,13 +1,13 @@
 runtime: plugin
 action:
   title: Rename
-  description: Rename section and update allocations and attachments
+  description: Rename chassis path and update allocations and attachments
   arguments:
     - name: old
       title: Old Path
-      description: Current section path
+      description: Current chassis path
       required: true
     - name: new
       title: New Path
-      description: New section path
+      description: New chassis path
       required: true

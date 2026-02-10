@@ -1,7 +1,6 @@
 package show
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -11,13 +10,51 @@ import (
 	"github.com/plasmash/plasmactl-node/pkg/node"
 )
 
+// AllocationInfo represents a node allocation
+type AllocationInfo struct {
+	Node     string   `json:"node"`
+	Platform string   `json:"platform"`
+	Chassis  []string `json:"chassis"`
+}
+
+// DisplayName returns the node formatted as "hostname@platform".
+func (a AllocationInfo) DisplayName() string {
+	return a.Node + "@" + a.Platform
+}
+
+// AttachmentInfo represents a component attachment
+type AttachmentInfo struct {
+	Component string `json:"component"`
+	Version   string `json:"version,omitempty"`
+	Chassis   string `json:"chassis"`
+}
+
+// DisplayName returns the component formatted as "name@version".
+func (a AttachmentInfo) DisplayName() string {
+	return component.FormatDisplayName(a.Component, a.Version)
+}
+
+// ShowResult is the structured output for chassis:show
+type ShowResult struct {
+	Chassis     string           `json:"chassis,omitempty"`
+	Allocations []AllocationInfo `json:"allocations,omitempty"`
+	Attachments []AttachmentInfo `json:"attachments,omitempty"`
+}
+
 // Show implements the chassis:show command
 type Show struct {
 	action.WithLogger
 	action.WithTerm
 
-	Section  string
+	Chassis  string
 	Platform string
+
+	result *ShowResult
+}
+
+// Result returns the structured result for JSON output
+func (s *Show) Result() any {
+	return s.result
 }
 
 // Execute runs the show action
@@ -27,9 +64,9 @@ func (s *Show) Execute() error {
 		return err
 	}
 
-	// If section specified, validate it exists
-	if s.Section != "" && !c.Exists(s.Section) {
-		s.Term().Error().Printfln("Section %q not found in chassis.yaml", s.Section)
+	// If chassis path specified, validate it exists
+	if s.Chassis != "" && !c.Exists(s.Chassis) {
+		s.Term().Error().Printfln("Chassis %q not found in chassis.yaml", s.Chassis)
 		return nil
 	}
 
@@ -54,43 +91,51 @@ func (s *Show) Execute() error {
 		s.Log().Debug("Failed to load components", "error", err)
 	}
 
-	// Get attachments map (component → sections)
+	// Build version map for quick lookup
+	versionMap := make(map[string]string)
+	for _, comp := range components {
+		versionMap[comp.Name] = comp.Version
+	}
+
+	// Get attachments map (component → chassis paths)
 	attachmentsMap := components.Attachments(c)
 
-	// Determine query section - use root if not specified
-	sectionToQuery := s.Section
-	if sectionToQuery == "" {
+	// Determine query chassis path - use root if not specified
+	chassisToQuery := s.Chassis
+	if chassisToQuery == "" {
 		// Find root from chassis (first segment of first path)
 		roots := c.Flatten()
 		if len(roots) > 0 {
 			parts := strings.SplitN(roots[0], ".", 2)
-			sectionToQuery = parts[0]
+			chassisToQuery = parts[0]
 		}
 	}
 
-	// Collect component attachments for the section
+	// Collect component attachments for the chassis path
 	type componentInfo struct {
-		section   string
+		chassis   string
 		component string
+		version   string
 	}
 	var compInfos []componentInfo
 
-	for compName, sections := range attachmentsMap {
-		for _, sect := range sections {
-			// Check if section matches query (exact match or descendant)
-			if sectionToQuery == "" || sect == sectionToQuery || chassis.IsDescendantOf(sect, sectionToQuery) {
+	for compName, chassisPaths := range attachmentsMap {
+		for _, chassisPath := range chassisPaths {
+			// Check if chassis path matches query (exact match or descendant)
+			if chassisToQuery == "" || chassisPath == chassisToQuery || chassis.IsDescendantOf(chassisPath, chassisToQuery) {
 				compInfos = append(compInfos, componentInfo{
-					section:   sect,
+					chassis:   chassisPath,
 					component: compName,
+					version:   versionMap[compName],
 				})
 			}
 		}
 	}
 
-	// Sort components by section, then component name
+	// Sort components by chassis path, then component name
 	sort.Slice(compInfos, func(i, j int) bool {
-		if compInfos[i].section != compInfos[j].section {
-			return compInfos[i].section < compInfos[j].section
+		if compInfos[i].chassis != compInfos[j].chassis {
+			return compInfos[i].chassis < compInfos[j].chassis
 		}
 		return compInfos[i].component < compInfos[j].component
 	})
@@ -98,8 +143,8 @@ func (s *Show) Execute() error {
 	// Collect all node allocations (EFFECTIVE - after distribution)
 	type nodeInfo struct {
 		platform string
-		hostname string
-		sections []string // effective sections after distribution
+		node     string
+		chassis  []string // effective chassis paths after distribution
 	}
 	var nodes []nodeInfo
 
@@ -117,13 +162,13 @@ func (s *Show) Execute() error {
 		allocations := platformNodes.Allocations(c)
 
 		for _, n := range platformNodes {
-			effectiveSections := allocations[n.Hostname]
+			effectiveChassis := allocations[n.Hostname]
 
-			// If section filter is specified, check if node is allocated to it
-			if s.Section != "" {
+			// If chassis filter is specified, check if node is allocated to it
+			if s.Chassis != "" {
 				found := false
-				for _, sect := range effectiveSections {
-					if sect == s.Section || chassis.IsDescendantOf(sect, s.Section) {
+				for _, chassisPath := range effectiveChassis {
+					if chassisPath == s.Chassis || chassis.IsDescendantOf(chassisPath, s.Chassis) {
 						found = true
 						break
 					}
@@ -135,41 +180,58 @@ func (s *Show) Execute() error {
 
 			nodes = append(nodes, nodeInfo{
 				platform: platform,
-				hostname: n.Hostname,
-				sections: effectiveSections,
+				node:     n.Hostname,
+				chassis:  effectiveChassis,
 			})
 		}
 	}
 
-	// Sort nodes by platform, then hostname
+	// Sort nodes by platform, then node
 	sort.Slice(nodes, func(i, j int) bool {
 		if nodes[i].platform != nodes[j].platform {
 			return nodes[i].platform < nodes[j].platform
 		}
-		return nodes[i].hostname < nodes[j].hostname
+		return nodes[i].node < nodes[j].node
 	})
 
+	// Build result
+	s.result = &ShowResult{
+		Chassis: s.Chassis,
+	}
+
+	for _, n := range nodes {
+		s.result.Allocations = append(s.result.Allocations, AllocationInfo{
+			Node:     n.node,
+			Platform: n.platform,
+			Chassis:  n.chassis,
+		})
+	}
+
+	for _, comp := range compInfos {
+		s.result.Attachments = append(s.result.Attachments, AttachmentInfo{
+			Component: comp.component,
+			Version:   comp.version,
+			Chassis:   comp.chassis,
+		})
+	}
+
 	// Output
-	if len(compInfos) == 0 && len(nodes) == 0 {
+	if len(s.result.Allocations) == 0 && len(s.result.Attachments) == 0 {
 		s.Term().Info().Println("No allocations or attachments found")
 		return nil
 	}
 
-	if len(nodes) > 0 {
-		s.Term().Info().Printfln("Allocations (%d nodes)", len(nodes))
-		for _, n := range nodes {
-			// Show node with section count - use chassis:query for details
-			fmt.Printf("node\t%s\t%s\t(%d sections)\n", n.hostname, n.platform, len(n.sections))
+	if len(s.result.Allocations) > 0 {
+		s.Term().Info().Printfln("Allocations (%d nodes)", len(s.result.Allocations))
+		for _, n := range s.result.Allocations {
+			s.Term().Printfln("node\t%s\t(%d chassis)", n.DisplayName(), len(n.Chassis))
 		}
 	}
 
-	if len(compInfos) > 0 {
-		if len(nodes) > 0 {
-			fmt.Println()
-		}
-		s.Term().Info().Printfln("Attachments (%d components)", len(compInfos))
-		for _, comp := range compInfos {
-			fmt.Printf("component\t%s\t%s\n", comp.component, comp.section)
+	if len(s.result.Attachments) > 0 {
+		s.Term().Info().Printfln("Attachments (%d components)", len(s.result.Attachments))
+		for _, a := range s.result.Attachments {
+			s.Term().Printfln("component\t%s\t%s", a.DisplayName(), a.Chassis)
 		}
 	}
 

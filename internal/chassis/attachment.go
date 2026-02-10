@@ -8,15 +8,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Attachment represents a component attached to a chassis section
+// Attachment represents a component attached to a chassis path
 type Attachment struct {
 	Component string
 	Playbook  string
-	Section   string
+	Chassis   string
 }
 
-// LoadAttachments scans playbooks for component attachments to a chassis section
-func LoadAttachments(dir, section string) ([]Attachment, error) {
+// LoadAttachments scans playbooks for component attachments to a chassis path
+func LoadAttachments(dir, chassisPath string) ([]Attachment, error) {
 	var attachments []Attachment
 
 	// Scan src/<layer>/<layer>.yaml playbooks
@@ -50,8 +50,8 @@ func LoadAttachments(dir, section string) ([]Attachment, error) {
 		}
 
 		for _, play := range plays {
-			// Match exact section or child sections
-			if play.Hosts == section || strings.HasPrefix(play.Hosts, section+".") {
+			// Match exact chassis path or children
+			if play.Hosts == chassisPath || strings.HasPrefix(play.Hosts, chassisPath+".") {
 				for _, r := range play.Roles {
 					var roleName string
 					switch role := r.(type) {
@@ -68,7 +68,7 @@ func LoadAttachments(dir, section string) ([]Attachment, error) {
 						attachments = append(attachments, Attachment{
 							Component: roleName,
 							Playbook:  playbookPath,
-							Section:   play.Hosts,
+							Chassis:   play.Hosts,
 						})
 					}
 				}
@@ -79,17 +79,17 @@ func LoadAttachments(dir, section string) ([]Attachment, error) {
 	return attachments, nil
 }
 
-// HasAttachments checks if a chassis section has any component attachments
-func HasAttachments(dir, section string) (bool, []Attachment, error) {
-	attachments, err := LoadAttachments(dir, section)
+// HasAttachments checks if a chassis path has any component attachments
+func HasAttachments(dir, chassisPath string) (bool, []Attachment, error) {
+	attachments, err := LoadAttachments(dir, chassisPath)
 	if err != nil {
 		return false, nil, err
 	}
 	return len(attachments) > 0, attachments, nil
 }
 
-// UpdateAttachments renames chassis section references in all playbooks
-func UpdateAttachments(dir, oldSection, newSection string) ([]string, error) {
+// UpdateAttachments renames chassis path references in all playbooks
+func UpdateAttachments(dir, oldChassis, newChassis string) ([]string, error) {
 	var updatedFiles []string
 
 	srcDir := filepath.Join(dir, "src")
@@ -118,7 +118,7 @@ func UpdateAttachments(dir, oldSection, newSection string) ([]string, error) {
 			continue
 		}
 
-		updated := updateHostsInNode(&doc, oldSection, newSection)
+		updated := updateHostsInNode(&doc, oldChassis, newChassis)
 		if updated {
 			newData, err := yaml.Marshal(&doc)
 			if err != nil {
@@ -135,19 +135,19 @@ func UpdateAttachments(dir, oldSection, newSection string) ([]string, error) {
 }
 
 // updateHostsInNode recursively updates hosts fields in a yaml.Node
-func updateHostsInNode(node *yaml.Node, oldSection, newSection string) bool {
+func updateHostsInNode(node *yaml.Node, oldChassis, newChassis string) bool {
 	updated := false
 
 	switch node.Kind {
 	case yaml.DocumentNode:
 		for _, child := range node.Content {
-			if updateHostsInNode(child, oldSection, newSection) {
+			if updateHostsInNode(child, oldChassis, newChassis) {
 				updated = true
 			}
 		}
 	case yaml.SequenceNode:
 		for _, child := range node.Content {
-			if updateHostsInNode(child, oldSection, newSection) {
+			if updateHostsInNode(child, oldChassis, newChassis) {
 				updated = true
 			}
 		}
@@ -158,15 +158,15 @@ func updateHostsInNode(node *yaml.Node, oldSection, newSection string) bool {
 
 			if key.Value == "hosts" && value.Kind == yaml.ScalarNode {
 				// Check for exact match or prefix match
-				if value.Value == oldSection {
-					value.Value = newSection
+				if value.Value == oldChassis {
+					value.Value = newChassis
 					updated = true
-				} else if strings.HasPrefix(value.Value, oldSection+".") {
-					value.Value = newSection + value.Value[len(oldSection):]
+				} else if strings.HasPrefix(value.Value, oldChassis+".") {
+					value.Value = newChassis + value.Value[len(oldChassis):]
 					updated = true
 				}
 			} else {
-				if updateHostsInNode(value, oldSection, newSection) {
+				if updateHostsInNode(value, oldChassis, newChassis) {
 					updated = true
 				}
 			}
@@ -176,8 +176,8 @@ func updateHostsInNode(node *yaml.Node, oldSection, newSection string) bool {
 	return updated
 }
 
-// UpdateAllocations renames chassis section references in all node files
-func UpdateAllocations(dir, oldSection, newSection string) ([]string, error) {
+// UpdateAllocations renames chassis path references in all node files
+func UpdateAllocations(dir, oldChassis, newChassis string) ([]string, error) {
 	var updatedFiles []string
 
 	instDir := filepath.Join(dir, "inst")
@@ -217,7 +217,7 @@ func UpdateAllocations(dir, oldSection, newSection string) ([]string, error) {
 				continue
 			}
 
-			updated := updateChassisInNode(&doc, oldSection, newSection)
+			updated := updateChassisInNode(&doc, oldChassis, newChassis)
 			if updated {
 				newData, err := yaml.Marshal(&doc)
 				if err != nil {
@@ -235,13 +235,13 @@ func UpdateAllocations(dir, oldSection, newSection string) ([]string, error) {
 }
 
 // updateChassisInNode updates chassis array entries in a yaml.Node
-func updateChassisInNode(node *yaml.Node, oldSection, newSection string) bool {
+func updateChassisInNode(node *yaml.Node, oldChassis, newChassis string) bool {
 	updated := false
 
 	switch node.Kind {
 	case yaml.DocumentNode:
 		for _, child := range node.Content {
-			if updateChassisInNode(child, oldSection, newSection) {
+			if updateChassisInNode(child, oldChassis, newChassis) {
 				updated = true
 			}
 		}
@@ -254,17 +254,17 @@ func updateChassisInNode(node *yaml.Node, oldSection, newSection string) bool {
 				// Update chassis array entries
 				for _, item := range value.Content {
 					if item.Kind == yaml.ScalarNode {
-						if item.Value == oldSection {
-							item.Value = newSection
+						if item.Value == oldChassis {
+							item.Value = newChassis
 							updated = true
-						} else if strings.HasPrefix(item.Value, oldSection+".") {
-							item.Value = newSection + item.Value[len(oldSection):]
+						} else if strings.HasPrefix(item.Value, oldChassis+".") {
+							item.Value = newChassis + item.Value[len(oldChassis):]
 							updated = true
 						}
 					}
 				}
 			} else {
-				if updateChassisInNode(value, oldSection, newSection) {
+				if updateChassisInNode(value, oldChassis, newChassis) {
 					updated = true
 				}
 			}

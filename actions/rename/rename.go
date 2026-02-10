@@ -24,18 +24,18 @@ func (r *Rename) Execute() error {
 	}
 
 	if !c.Exists(r.Old) {
-		r.Term().Error().Printfln("Section %q does not exist", r.Old)
+		r.Term().Error().Printfln("Chassis %q does not exist", r.Old)
 		return nil
 	}
 
 	if c.Exists(r.New) {
-		r.Term().Error().Printfln("Section %q already exists", r.New)
+		r.Term().Error().Printfln("Chassis %q already exists", r.New)
 		return nil
 	}
 
 	// Rename in chassis.yaml
 	if err := c.Rename(r.Old, r.New); err != nil {
-		r.Term().Error().Printfln("Failed to rename section: %s", err)
+		r.Term().Error().Printfln("Failed to rename chassis path: %s", err)
 		return nil
 	}
 

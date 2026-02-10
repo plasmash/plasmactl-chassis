@@ -1,9 +1,9 @@
 runtime: plugin
 action:
   title: Remove
-  description: Remove a chassis section
+  description: Remove a chassis path
   arguments:
-    - name: section
-      title: Section
-      description: Chassis section path to remove
+    - name: chassis
+      title: Chassis
+      description: Chassis path to remove
       required: true

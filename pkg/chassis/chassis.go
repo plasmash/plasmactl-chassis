@@ -1,5 +1,5 @@
 // Package chassis provides the Chassis type for managing platform chassis structure.
-// The chassis defines the skeleton of the platform - sections where nodes and components attach.
+// The chassis defines the skeleton of the platform - paths where nodes and components attach.
 package chassis
 
 import (
@@ -42,7 +42,7 @@ func Load(dir string) (*Chassis, error) {
 	}, nil
 }
 
-// Flatten returns all chassis section paths in tree traversal order.
+// Flatten returns all chassis paths in tree traversal order.
 // Example output: ["platform", "platform.foundation", "platform.foundation.cluster", ...]
 func (c *Chassis) Flatten() []string {
 	if c.node == nil || len(c.node.Content) == 0 {
@@ -105,17 +105,17 @@ func flattenSequence(prefix string, node *yaml.Node) []string {
 	return paths
 }
 
-// Exists checks if a section path exists in the chassis.
-func (c *Chassis) Exists(section string) bool {
+// Exists checks if a chassis path exists.
+func (c *Chassis) Exists(chassisPath string) bool {
 	for _, path := range c.Flatten() {
-		if path == section {
+		if path == chassisPath {
 			return true
 		}
 	}
 	return false
 }
 
-// Root returns the root section name (e.g., "platform").
+// Root returns the root chassis name (e.g., "platform").
 func (c *Chassis) Root() string {
 	paths := c.Flatten()
 	if len(paths) > 0 {
@@ -124,10 +124,10 @@ func (c *Chassis) Root() string {
 	return ""
 }
 
-// Children returns the direct children of a section.
-func (c *Chassis) Children(section string) []string {
+// Children returns the direct children of a chassis path.
+func (c *Chassis) Children(chassisPath string) []string {
 	var children []string
-	prefix := section + "."
+	prefix := chassisPath + "."
 
 	for _, path := range c.Flatten() {
 		if strings.HasPrefix(path, prefix) {
@@ -142,26 +142,26 @@ func (c *Chassis) Children(section string) []string {
 	return children
 }
 
-// ChildrenMap returns a map of section to its direct children.
+// ChildrenMap returns a map of chassis path to its direct children.
 func (c *Chassis) ChildrenMap() map[string][]string {
 	result := make(map[string][]string)
 
-	for _, section := range c.Flatten() {
-		parent := Parent(section)
+	for _, chassisPath := range c.Flatten() {
+		parent := Parent(chassisPath)
 		if parent != "" {
-			result[parent] = append(result[parent], section)
+			result[parent] = append(result[parent], chassisPath)
 		}
 	}
 
 	return result
 }
 
-// Ancestors returns all ancestor sections of a given section.
+// Ancestors returns all ancestors of a given chassis path.
 // Example: "platform.foundation.cluster.control" returns
 // ["platform.foundation.cluster", "platform.foundation", "platform"]
-func (c *Chassis) Ancestors(section string) []string {
+func (c *Chassis) Ancestors(chassisPath string) []string {
 	var ancestors []string
-	current := section
+	current := chassisPath
 
 	for {
 		parent := Parent(current)
@@ -175,29 +175,45 @@ func (c *Chassis) Ancestors(section string) []string {
 	return ancestors
 }
 
-// AncestorsMap returns a map of section to all its ancestors.
+// AncestorsMap returns a map of chassis path to its ancestors.
 func (c *Chassis) AncestorsMap() map[string][]string {
 	result := make(map[string][]string)
 
-	for _, section := range c.Flatten() {
-		result[section] = c.Ancestors(section)
+	for _, chassisPath := range c.Flatten() {
+		result[chassisPath] = c.Ancestors(chassisPath)
 	}
 
 	return result
 }
 
-// Parent returns the parent section of a given section.
+// Parent returns the parent of a given chassis path.
 // Example: "platform.foundation.cluster" returns "platform.foundation"
-// Returns empty string for root sections.
-func Parent(section string) string {
-	idx := strings.LastIndex(section, ".")
+// Returns empty string for root paths.
+func Parent(chassisPath string) string {
+	idx := strings.LastIndex(chassisPath, ".")
 	if idx == -1 {
 		return ""
 	}
-	return section[:idx]
+	return chassisPath[:idx]
 }
 
-// IsDescendantOf checks if section is a descendant of ancestor.
-func IsDescendantOf(section, ancestor string) bool {
-	return strings.HasPrefix(section, ancestor+".")
+// IsDescendantOf checks if chassisPath is a descendant of ancestor.
+func IsDescendantOf(chassisPath, ancestor string) bool {
+	return strings.HasPrefix(chassisPath, ancestor+".")
+}
+
+// FlattenWithPrefix returns chassis paths that start with the given prefix.
+func (c *Chassis) FlattenWithPrefix(prefix string) []string {
+	all := c.Flatten()
+	if prefix == "" {
+		return all
+	}
+
+	var filtered []string
+	for _, path := range all {
+		if path == prefix || strings.HasPrefix(path, prefix+".") {
+			filtered = append(filtered, path)
+		}
+	}
+	return filtered
 }

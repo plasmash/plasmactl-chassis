@@ -1,9 +1,28 @@
 runtime: plugin
 action:
   title: Query
-  description: Find chassis sections for node/component
+  description: Find chassis paths for node/component
   arguments:
     - name: identifier
       title: Identifier
       description: Node hostname or component name
       required: true
+  options:
+    - name: kind
+      shorthand: k
+      title: Kind
+      description: Identifier kind to skip auto-detection (node, component)
+      type: string
+      enum: [node, component]
+      default: ""
+  result:
+    type: object
+    description: Query result containing matching chassis paths
+    properties:
+      paths:
+        type: array
+        description: List of chassis paths matching the query
+        items:
+          type: string
+    required:
+      - paths

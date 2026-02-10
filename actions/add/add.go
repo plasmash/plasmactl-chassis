@@ -10,7 +10,7 @@ type Add struct {
 	action.WithLogger
 	action.WithTerm
 
-	Section string
+	Chassis string
 }
 
 // Execute runs the add action
@@ -20,8 +20,8 @@ func (a *Add) Execute() error {
 		return err
 	}
 
-	if err := c.Add(a.Section); err != nil {
-		a.Term().Error().Printfln("Failed to add section: %s", err)
+	if err := c.Add(a.Chassis); err != nil {
+		a.Term().Error().Printfln("Failed to add chassis path: %s", err)
 		return nil
 	}
 
@@ -29,6 +29,6 @@ func (a *Add) Execute() error {
 		return err
 	}
 
-	a.Term().Success().Printfln("Added: %s", a.Section)
+	a.Term().Success().Printfln("Added: %s", a.Chassis)
 	return nil
 }

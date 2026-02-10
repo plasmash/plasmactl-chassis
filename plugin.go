@@ -43,49 +43,51 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
 func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
-	// chassis:list - List chassis sections
+	// chassis:list - List chassis paths
 	listYaml, _ := actionYamlFS.ReadFile("actions/list/list.yaml")
 	listAct := action.NewFromYAML("chassis:list", listYaml)
-	listAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	listAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 
-		section := ""
-		if input.Arg("section") != nil {
-			section = input.Arg("section").(string)
+		chassisPath := ""
+		if input.Arg("chassis") != nil {
+			chassisPath = input.Arg("chassis").(string)
 		}
 
-		list := &list.List{
-			Section: section,
+		l := &list.List{
+			Chassis: chassisPath,
 			Tree:    input.Opt("tree").(bool),
 		}
-		list.SetLogger(log)
-		list.SetTerm(term)
-		return list.Execute()
+		l.SetLogger(log)
+		l.SetTerm(term)
+		err := l.Execute()
+		return l.Result(), err
 	}))
 
-	// chassis:show - Show chassis section details
+	// chassis:show - Show chassis details
 	showYaml, _ := actionYamlFS.ReadFile("actions/show/show.yaml")
 	showAct := action.NewFromYAML("chassis:show", showYaml)
-	showAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	showAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 
-		section := ""
-		if input.Arg("section") != nil {
-			section = input.Arg("section").(string)
+		chassisPath := ""
+		if input.Arg("chassis") != nil {
+			chassisPath = input.Arg("chassis").(string)
 		}
 
-		show := &show.Show{
-			Section:  section,
+		s := &show.Show{
+			Chassis:  chassisPath,
 			Platform: input.Opt("platform").(string),
 		}
-		show.SetLogger(log)
-		show.SetTerm(term)
-		return show.Execute()
+		s.SetLogger(log)
+		s.SetTerm(term)
+		err := s.Execute()
+		return s.Result(), err
 	}))
 
-	// chassis:add - Add a chassis section
+	// chassis:add - Add a chassis path
 	addYaml, _ := actionYamlFS.ReadFile("actions/add/add.yaml")
 	addAct := action.NewFromYAML("chassis:add", addYaml)
 	addAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
@@ -93,14 +95,14 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		log, term := getLogger(a)
 
 		add := &add.Add{
-			Section: input.Arg("section").(string),
+			Chassis: input.Arg("chassis").(string),
 		}
 		add.SetLogger(log)
 		add.SetTerm(term)
 		return add.Execute()
 	}))
 
-	// chassis:remove - Remove a chassis section
+	// chassis:remove - Remove a chassis path
 	removeYaml, _ := actionYamlFS.ReadFile("actions/remove/remove.yaml")
 	removeAct := action.NewFromYAML("chassis:remove", removeYaml)
 	removeAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
@@ -108,14 +110,14 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		log, term := getLogger(a)
 
 		remove := &remove.Remove{
-			Section: input.Arg("section").(string),
+			Chassis: input.Arg("chassis").(string),
 		}
 		remove.SetLogger(log)
 		remove.SetTerm(term)
 		return remove.Execute()
 	}))
 
-	// chassis:rename - Rename a chassis section
+	// chassis:rename - Rename a chassis path
 	renameYaml, _ := actionYamlFS.ReadFile("actions/rename/rename.yaml")
 	renameAct := action.NewFromYAML("chassis:rename", renameYaml)
 	renameAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
@@ -131,19 +133,21 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return ren.Execute()
 	}))
 
-	// chassis:query - Query chassis sections for a node or component
+	// chassis:query - Query chassis paths for a node or component
 	queryYaml, _ := actionYamlFS.ReadFile("actions/query/query.yaml")
 	queryAct := action.NewFromYAML("chassis:query", queryYaml)
-	queryAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	queryAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 
 		q := &query.Query{
 			Identifier: input.Arg("identifier").(string),
+			Kind:       input.Opt("kind").(string),
 		}
 		q.SetLogger(log)
 		q.SetTerm(term)
-		return q.Execute()
+		err := q.Execute()
+		return q.Result(), err
 	}))
 
 	return []*action.Action{
