@@ -1,6 +1,8 @@
 package add
 
 import (
+	"fmt"
+
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-chassis/internal/chassis"
 )
@@ -21,8 +23,7 @@ func (a *Add) Execute() error {
 	}
 
 	if err := c.Add(a.Chassis); err != nil {
-		a.Term().Error().Printfln("Failed to add chassis path: %s", err)
-		return nil
+		return fmt.Errorf("failed to add chassis path: %w", err)
 	}
 
 	if err := c.Save("."); err != nil {

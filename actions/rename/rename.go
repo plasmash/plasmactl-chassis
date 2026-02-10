@@ -1,6 +1,8 @@
 package rename
 
 import (
+	"fmt"
+
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-chassis/internal/chassis"
 )
@@ -22,19 +24,16 @@ func (r *Rename) Execute() error {
 	}
 
 	if !c.Exists(r.Old) {
-		r.Term().Error().Printfln("Chassis %q does not exist", r.Old)
-		return nil
+		return fmt.Errorf("chassis %q does not exist", r.Old)
 	}
 
 	if c.Exists(r.New) {
-		r.Term().Error().Printfln("Chassis %q already exists", r.New)
-		return nil
+		return fmt.Errorf("chassis %q already exists", r.New)
 	}
 
 	// Rename in chassis.yaml
 	if err := c.Rename(r.Old, r.New); err != nil {
-		r.Term().Error().Printfln("Failed to rename chassis path: %s", err)
-		return nil
+		return fmt.Errorf("failed to rename chassis path: %w", err)
 	}
 
 	if err := c.Save("."); err != nil {

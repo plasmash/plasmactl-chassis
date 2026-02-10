@@ -23,8 +23,7 @@ func (r *Remove) Execute() error {
 	}
 
 	if !c.Exists(r.Chassis) {
-		r.Term().Error().Printfln("Chassis %q not found", r.Chassis)
-		return nil
+		return fmt.Errorf("chassis %q not found", r.Chassis)
 	}
 
 	// Check for allocated nodes
@@ -41,15 +40,12 @@ func (r *Remove) Execute() error {
 	}
 
 	if len(allocatedNodes) > 0 {
-		r.Term().Error().Printfln("Cannot remove chassis path %q: nodes are allocated", r.Chassis)
-		r.Term().Println()
 		r.Term().Info().Println("Allocated nodes:")
 		for _, n := range allocatedNodes {
 			r.Term().Printfln("  %s", n)
 		}
-		r.Term().Println()
 		r.Term().Info().Println("Use node:allocate <hostname> <chassis>- to deallocate first")
-		return nil
+		return fmt.Errorf("cannot remove chassis %q: %d nodes are allocated", r.Chassis, len(allocatedNodes))
 	}
 
 	// Check for attached components
@@ -59,15 +55,12 @@ func (r *Remove) Execute() error {
 	}
 
 	if len(attachments) > 0 {
-		r.Term().Error().Printfln("Cannot remove chassis path %q: components are attached", r.Chassis)
-		r.Term().Println()
 		r.Term().Info().Println("Attached components:")
 		for _, a := range attachments {
 			r.Term().Printfln("  %s", a.Component)
 		}
-		r.Term().Println()
 		r.Term().Info().Println("Use component:detach to detach first")
-		return nil
+		return fmt.Errorf("cannot remove chassis %q: %d components are attached", r.Chassis, len(attachments))
 	}
 
 	// Safe to remove
