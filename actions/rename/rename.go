@@ -7,6 +7,14 @@ import (
 	"github.com/plasmash/plasmactl-chassis/internal/chassis"
 )
 
+// RenameResult is the structured result of chassis:rename.
+type RenameResult struct {
+	Old                string   `json:"old"`
+	New                string   `json:"new"`
+	UpdatedAttachments []string `json:"updated_attachments,omitempty"`
+	UpdatedAllocations []string `json:"updated_allocations,omitempty"`
+}
+
 // Rename implements the chassis:rename command
 type Rename struct {
 	action.WithLogger
@@ -14,6 +22,13 @@ type Rename struct {
 
 	Old string
 	New string
+
+	result *RenameResult
+}
+
+// Result returns the structured result for JSON output.
+func (r *Rename) Result() any {
+	return r.result
 }
 
 // Execute runs the rename action
@@ -50,6 +65,13 @@ func (r *Rename) Execute() error {
 	updatedAllocations, err := chassis.UpdateAllocations(".", r.Old, r.New)
 	if err != nil {
 		r.Term().Warning().Printfln("Chassis renamed but failed to update allocations: %s", err)
+	}
+
+	r.result = &RenameResult{
+		Old:                r.Old,
+		New:                r.New,
+		UpdatedAttachments: updatedAttachments,
+		UpdatedAllocations: updatedAllocations,
 	}
 
 	r.Term().Success().Printfln("Renamed: %s → %s", r.Old, r.New)

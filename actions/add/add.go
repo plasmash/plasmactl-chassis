@@ -7,12 +7,24 @@ import (
 	"github.com/plasmash/plasmactl-chassis/internal/chassis"
 )
 
+// AddResult is the structured result of chassis:add.
+type AddResult struct {
+	Chassis string `json:"chassis"`
+}
+
 // Add implements the chassis:add command
 type Add struct {
 	action.WithLogger
 	action.WithTerm
 
 	Chassis string
+
+	result *AddResult
+}
+
+// Result returns the structured result for JSON output.
+func (a *Add) Result() any {
+	return a.result
 }
 
 // Execute runs the add action
@@ -30,6 +42,7 @@ func (a *Add) Execute() error {
 		return err
 	}
 
+	a.result = &AddResult{Chassis: a.Chassis}
 	a.Term().Success().Printfln("Added: %s", a.Chassis)
 	return nil
 }

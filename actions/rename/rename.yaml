@@ -11,3 +11,22 @@ action:
       title: New Path
       description: New chassis path
       required: true
+  result:
+    type: object
+    properties:
+      old:
+        type: string
+        description: Previous chassis path
+      new:
+        type: string
+        description: New chassis path
+      updated_attachments:
+        type: array
+        description: Playbook files updated with new chassis path
+        items:
+          type: string
+      updated_allocations:
+        type: array
+        description: Allocation files updated with new chassis path
+        items:
+          type: string

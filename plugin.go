@@ -90,37 +90,39 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	// chassis:add - Add a chassis path
 	addYaml, _ := actionYamlFS.ReadFile("actions/add/add.yaml")
 	addAct := action.NewFromYAML("chassis:add", addYaml)
-	addAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	addAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 
-		add := &add.Add{
+		ad := &add.Add{
 			Chassis: input.Arg("chassis").(string),
 		}
-		add.SetLogger(log)
-		add.SetTerm(term)
-		return add.Execute()
+		ad.SetLogger(log)
+		ad.SetTerm(term)
+		err := ad.Execute()
+		return ad.Result(), err
 	}))
 
 	// chassis:remove - Remove a chassis path
 	removeYaml, _ := actionYamlFS.ReadFile("actions/remove/remove.yaml")
 	removeAct := action.NewFromYAML("chassis:remove", removeYaml)
-	removeAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	removeAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 
-		remove := &remove.Remove{
+		rm := &remove.Remove{
 			Chassis: input.Arg("chassis").(string),
 		}
-		remove.SetLogger(log)
-		remove.SetTerm(term)
-		return remove.Execute()
+		rm.SetLogger(log)
+		rm.SetTerm(term)
+		err := rm.Execute()
+		return rm.Result(), err
 	}))
 
 	// chassis:rename - Rename a chassis path
 	renameYaml, _ := actionYamlFS.ReadFile("actions/rename/rename.yaml")
 	renameAct := action.NewFromYAML("chassis:rename", renameYaml)
-	renameAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	renameAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 
@@ -130,7 +132,8 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		}
 		ren.SetLogger(log)
 		ren.SetTerm(term)
-		return ren.Execute()
+		err := ren.Execute()
+		return ren.Result(), err
 	}))
 
 	// chassis:query - Query chassis paths for a node or component

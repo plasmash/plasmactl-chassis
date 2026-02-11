@@ -7,3 +7,9 @@ action:
       title: Chassis
       description: Chassis path to add (e.g., platform.layer.sublayer)
       required: true
+  result:
+    type: object
+    properties:
+      chassis:
+        type: string
+        description: The chassis path that was added

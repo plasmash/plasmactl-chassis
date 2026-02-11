@@ -7,12 +7,24 @@ import (
 	"github.com/plasmash/plasmactl-chassis/internal/chassis"
 )
 
+// RemoveResult is the structured result of chassis:remove.
+type RemoveResult struct {
+	Chassis string `json:"chassis"`
+}
+
 // Remove implements the chassis:remove command
 type Remove struct {
 	action.WithLogger
 	action.WithTerm
 
 	Chassis string
+
+	result *RemoveResult
+}
+
+// Result returns the structured result for JSON output.
+func (r *Remove) Result() any {
+	return r.result
 }
 
 // Execute runs the remove action
@@ -72,6 +84,7 @@ func (r *Remove) Execute() error {
 		return err
 	}
 
+	r.result = &RemoveResult{Chassis: r.Chassis}
 	r.Term().Success().Printfln("Removed: %s", r.Chassis)
 	return nil
 }
