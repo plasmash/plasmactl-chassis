@@ -2,6 +2,7 @@ package list
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/launchrctl/launchr"
 	"github.com/launchrctl/launchr/pkg/action"
@@ -10,9 +11,17 @@ import (
 	"github.com/plasmash/plasmactl-node/pkg/node"
 )
 
+// TreeEntry enriches a chassis path with its allocated nodes and attached components.
+type TreeEntry struct {
+	Path       string   `json:"path"`
+	Nodes      []string `json:"nodes,omitempty"`
+	Components []string `json:"components,omitempty"`
+}
+
 // ListResult is the structured output for chassis:list
 type ListResult struct {
-	Chassis []string `json:"chassis"`
+	Chassis []string    `json:"chassis"`
+	Tree    []TreeEntry `json:"tree,omitempty"`
 }
 
 // List implements the chassis:list command
@@ -20,6 +29,7 @@ type List struct {
 	action.WithLogger
 	action.WithTerm
 
+	Dir     string
 	Chassis string
 	Tree    bool
 
@@ -33,7 +43,7 @@ func (l *List) Result() any {
 
 // Execute runs the list action
 func (l *List) Execute() error {
-	c, err := chassis.Load(".")
+	c, err := chassis.Load(l.Dir)
 	if err != nil {
 		return err
 	}
@@ -65,7 +75,10 @@ func (l *List) Execute() error {
 // printTreeWithRelations prints the chassis tree with nodes (🖥) and components (🧩) inline
 func (l *List) printTreeWithRelations(c *chassis.Chassis, paths []string) {
 	// Load nodes and compute allocations
-	nodesByPlatform, _ := node.LoadByPlatform(".")
+	nodesByPlatform, err := node.LoadByPlatform(l.Dir)
+	if err != nil {
+		l.Log().Debug("Failed to load nodes", "error", err)
+	}
 	chassisToNodes := make(map[string][]string)
 
 	for _, nodes := range nodesByPlatform {
@@ -78,7 +91,10 @@ func (l *List) printTreeWithRelations(c *chassis.Chassis, paths []string) {
 	}
 
 	// Load components
-	components, _ := component.LoadFromPlaybooks(".")
+	components, err := component.LoadFromPlaybooks(l.Dir)
+	if err != nil {
+		l.Log().Debug("Failed to load components", "error", err)
+	}
 	chassisToComponents := make(map[string][]string)
 	for _, comp := range components {
 		chassisToComponents[comp.Chassis] = append(chassisToComponents[comp.Chassis], comp.Name)
@@ -90,6 +106,18 @@ func (l *List) printTreeWithRelations(c *chassis.Chassis, paths []string) {
 	}
 	for chassisPath := range chassisToComponents {
 		sort.Strings(chassisToComponents[chassisPath])
+	}
+
+	// Populate tree entries in result
+	for _, p := range paths {
+		entry := TreeEntry{Path: p}
+		if nodes, ok := chassisToNodes[p]; ok {
+			entry.Nodes = nodes
+		}
+		if comps, ok := chassisToComponents[p]; ok {
+			entry.Components = comps
+		}
+		l.result.Tree = append(l.result.Tree, entry)
 	}
 
 	// Build tree structure
@@ -111,7 +139,7 @@ func buildTree(paths []string) *treeNode {
 	root := &treeNode{name: ""}
 
 	for _, path := range paths {
-		parts := splitPath(path)
+		parts := strings.Split(path, ".")
 		current := root
 		currentPath := ""
 		for _, part := range parts {
@@ -140,25 +168,6 @@ func buildTree(paths []string) *treeNode {
 	return root
 }
 
-func splitPath(path string) []string {
-	var parts []string
-	current := ""
-	for _, c := range path {
-		if c == '.' {
-			if current != "" {
-				parts = append(parts, current)
-				current = ""
-			}
-		} else {
-			current += string(c)
-		}
-	}
-	if current != "" {
-		parts = append(parts, current)
-	}
-	return parts
-}
-
 func printNodeWithRelations(term *launchr.Terminal, node *treeNode, indent, prefix string, chassisToNodes, chassisToComponents map[string][]string) {
 	// Print this node
 	term.Printfln("%s%s", prefix, node.name)
@@ -184,7 +193,7 @@ func printNodeWithRelations(term *launchr.Terminal, node *treeNode, indent, pref
 			nextIndent = indent + "│   "
 		}
 		_ = nextIndent // unused for leaf nodes
-		term.Printfln("%s🖥  %s", childPrefix, n)
+		term.Printfln("%s🖥 %s", childPrefix, n)
 	}
 
 	// Print components for this chassis path

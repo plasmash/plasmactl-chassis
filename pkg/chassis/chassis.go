@@ -18,6 +18,26 @@ type Chassis struct {
 	data map[string]map[string][]interface{}
 }
 
+// YAMLNode returns the underlying YAML document node.
+func (c *Chassis) YAMLNode() *yaml.Node {
+	return c.node
+}
+
+// SetYAMLNode replaces the underlying YAML document node.
+func (c *Chassis) SetYAMLNode(n *yaml.Node) {
+	c.node = n
+}
+
+// RawData returns the parsed chassis data structure.
+func (c *Chassis) RawData() map[string]map[string][]interface{} {
+	return c.data
+}
+
+// SetRawData replaces the parsed chassis data structure.
+func (c *Chassis) SetRawData(d map[string]map[string][]interface{}) {
+	c.data = d
+}
+
 // Load reads and parses chassis.yaml from the given directory.
 func Load(dir string) (*Chassis, error) {
 	path := filepath.Join(dir, "chassis.yaml")
@@ -216,4 +236,24 @@ func (c *Chassis) FlattenWithPrefix(prefix string) []string {
 		}
 	}
 	return filtered
+}
+
+// ValidatePath checks that a chassis path is well-formed.
+// Segments must be non-empty and contain only lowercase letters, digits, hyphens, or underscores.
+func ValidatePath(chassisPath string) error {
+	if chassisPath == "" {
+		return fmt.Errorf("chassis path cannot be empty")
+	}
+	parts := strings.Split(chassisPath, ".")
+	for i, part := range parts {
+		if part == "" {
+			return fmt.Errorf("chassis path has empty segment at position %d", i+1)
+		}
+		for _, r := range part {
+			if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+				return fmt.Errorf("chassis path segment %q contains invalid character %q", part, string(r))
+			}
+		}
+	}
+	return nil
 }

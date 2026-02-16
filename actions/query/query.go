@@ -1,6 +1,7 @@
 package query
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/launchrctl/launchr/pkg/action"
@@ -19,29 +20,34 @@ type Query struct {
 	action.WithLogger
 	action.WithTerm
 
+	Dir        string
 	Identifier string
-	Kind       string // "node" or "component" to skip auto-detection
+	Kind       string // "node" or "component" to narrow search
 
-	result QueryResult
+	result *QueryResult
 }
 
 // Execute runs the query action
 func (q *Query) Execute() error {
 	// Load chassis for distribution computation
-	c, err := chassis.Load(".")
+	c, err := chassis.Load(q.Dir)
 	if err != nil {
 		return err
 	}
 
 	var chassisPaths []string
 
-	// Search based on kind or auto-detect
+	// Search based on kind or search both when unspecified
 	searchNode := q.Kind == "" || q.Kind == "node"
 	searchComponent := q.Kind == "" || q.Kind == "component"
 
+	if q.Kind != "" && !searchNode && !searchComponent {
+		return fmt.Errorf("invalid kind %q: must be \"node\" or \"component\"", q.Kind)
+	}
+
 	// Search in nodes (allocations with distribution)
 	if searchNode {
-		nodesByPlatform, err := node.LoadByPlatform(".")
+		nodesByPlatform, err := node.LoadByPlatform(q.Dir)
 		if err != nil {
 			q.Log().Debug("Failed to load nodes", "error", err)
 		}
@@ -59,9 +65,9 @@ func (q *Query) Execute() error {
 		}
 	}
 
-	// Search in attachments (components)
-	if searchComponent && len(chassisPaths) == 0 {
-		components, err := component.LoadFromPlaybooks(".")
+	// Search in attachments (components) — always search when applicable, no short-circuit
+	if searchComponent {
+		components, err := component.LoadFromPlaybooks(q.Dir)
 		if err != nil {
 			q.Log().Debug("Failed to load components", "error", err)
 		}
@@ -73,13 +79,12 @@ func (q *Query) Execute() error {
 	}
 
 	if len(chassisPaths) == 0 {
-		q.Term().Warning().Printfln("No allocation or attachment found for %q", q.Identifier)
-		return nil
+		return fmt.Errorf("no chassis paths found for %q (searched as %s)", q.Identifier, q.searchDescription())
 	}
 
 	// Remove duplicates and sort
 	seen := make(map[string]bool)
-	unique := []string{}
+	var unique []string
 	for _, p := range chassisPaths {
 		if !seen[p] {
 			seen[p] = true
@@ -88,13 +93,25 @@ func (q *Query) Execute() error {
 	}
 	sort.Strings(unique)
 
-	q.result.Paths = unique
+	q.result = &QueryResult{Paths: unique}
 
 	for _, s := range unique {
 		q.Term().Printfln("%s", s)
 	}
 
 	return nil
+}
+
+// searchDescription returns a human-readable description of what was searched.
+func (q *Query) searchDescription() string {
+	switch q.Kind {
+	case "node":
+		return "node"
+	case "component":
+		return "component"
+	default:
+		return "node and component"
+	}
 }
 
 // Result returns the structured result for JSON output

@@ -41,125 +41,100 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 	return nil
 }
 
+// actionRunner is implemented by all chassis action structs.
+type actionRunner interface {
+	SetLogger(*launchr.Logger)
+	SetTerm(*launchr.Terminal)
+	Execute() error
+	Result() any
+}
+
+// createAction builds a launchr action from YAML and a factory function.
+func createAction(yamlFile, name string, factory func(*action.Input) actionRunner) *action.Action {
+	data, _ := actionYamlFS.ReadFile(yamlFile)
+	act := action.NewFromYAML(name, data)
+	act.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
+		log, term := getLogger(a)
+		runner := factory(a.Input())
+		runner.SetLogger(log)
+		runner.SetTerm(term)
+		err := runner.Execute()
+		return runner.Result(), err
+	}))
+	return act
+}
+
+// optString returns a string option value or empty string if nil.
+func optString(input *action.Input, name string) string {
+	if v := input.Opt(name); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// optBool returns a bool option value or false if nil.
+func optBool(input *action.Input, name string) bool {
+	if v := input.Opt(name); v != nil {
+		return v.(bool)
+	}
+	return false
+}
+
+// argString returns a string argument value or empty string if nil.
+func argString(input *action.Input, name string) string {
+	if v := input.Arg(name); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
 func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
-	// chassis:list - List chassis paths
-	listYaml, _ := actionYamlFS.ReadFile("actions/list/list.yaml")
-	listAct := action.NewFromYAML("chassis:list", listYaml)
-	listAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
-		input := a.Input()
-		log, term := getLogger(a)
-
-		chassisPath := ""
-		if input.Arg("chassis") != nil {
-			chassisPath = input.Arg("chassis").(string)
-		}
-
-		l := &list.List{
-			Chassis: chassisPath,
-			Tree:    input.Opt("tree").(bool),
-		}
-		l.SetLogger(log)
-		l.SetTerm(term)
-		err := l.Execute()
-		return l.Result(), err
-	}))
-
-	// chassis:show - Show chassis details
-	showYaml, _ := actionYamlFS.ReadFile("actions/show/show.yaml")
-	showAct := action.NewFromYAML("chassis:show", showYaml)
-	showAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
-		input := a.Input()
-		log, term := getLogger(a)
-
-		chassisPath := ""
-		if input.Arg("chassis") != nil {
-			chassisPath = input.Arg("chassis").(string)
-		}
-
-		s := &show.Show{
-			Chassis:  chassisPath,
-			Platform: input.Opt("platform").(string),
-		}
-		s.SetLogger(log)
-		s.SetTerm(term)
-		err := s.Execute()
-		return s.Result(), err
-	}))
-
-	// chassis:add - Add a chassis path
-	addYaml, _ := actionYamlFS.ReadFile("actions/add/add.yaml")
-	addAct := action.NewFromYAML("chassis:add", addYaml)
-	addAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
-		input := a.Input()
-		log, term := getLogger(a)
-
-		ad := &add.Add{
-			Chassis: input.Arg("chassis").(string),
-		}
-		ad.SetLogger(log)
-		ad.SetTerm(term)
-		err := ad.Execute()
-		return ad.Result(), err
-	}))
-
-	// chassis:remove - Remove a chassis path
-	removeYaml, _ := actionYamlFS.ReadFile("actions/remove/remove.yaml")
-	removeAct := action.NewFromYAML("chassis:remove", removeYaml)
-	removeAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
-		input := a.Input()
-		log, term := getLogger(a)
-
-		rm := &remove.Remove{
-			Chassis: input.Arg("chassis").(string),
-		}
-		rm.SetLogger(log)
-		rm.SetTerm(term)
-		err := rm.Execute()
-		return rm.Result(), err
-	}))
-
-	// chassis:rename - Rename a chassis path
-	renameYaml, _ := actionYamlFS.ReadFile("actions/rename/rename.yaml")
-	renameAct := action.NewFromYAML("chassis:rename", renameYaml)
-	renameAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
-		input := a.Input()
-		log, term := getLogger(a)
-
-		ren := &rename.Rename{
-			Old: input.Arg("old").(string),
-			New: input.Arg("new").(string),
-		}
-		ren.SetLogger(log)
-		ren.SetTerm(term)
-		err := ren.Execute()
-		return ren.Result(), err
-	}))
-
-	// chassis:query - Query chassis paths for a node or component
-	queryYaml, _ := actionYamlFS.ReadFile("actions/query/query.yaml")
-	queryAct := action.NewFromYAML("chassis:query", queryYaml)
-	queryAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
-		input := a.Input()
-		log, term := getLogger(a)
-
-		q := &query.Query{
-			Identifier: input.Arg("identifier").(string),
-			Kind:       input.Opt("kind").(string),
-		}
-		q.SetLogger(log)
-		q.SetTerm(term)
-		err := q.Execute()
-		return q.Result(), err
-	}))
-
 	return []*action.Action{
-		listAct,
-		showAct,
-		addAct,
-		removeAct,
-		renameAct,
-		queryAct,
+		createAction("actions/list/list.yaml", "chassis:list", func(input *action.Input) actionRunner {
+			return &list.List{
+				Dir:     optString(input, "dir"),
+				Chassis: argString(input, "chassis"),
+				Tree:    optBool(input, "tree"),
+			}
+		}),
+		createAction("actions/show/show.yaml", "chassis:show", func(input *action.Input) actionRunner {
+			return &show.Show{
+				Dir:      optString(input, "dir"),
+				Chassis:  argString(input, "chassis"),
+				Platform: optString(input, "platform"),
+				Kind:     optString(input, "kind"),
+			}
+		}),
+		createAction("actions/add/add.yaml", "chassis:add", func(input *action.Input) actionRunner {
+			return &add.Add{
+				Dir:     optString(input, "dir"),
+				Chassis: input.Arg("chassis").(string),
+				Force:   optBool(input, "force"),
+			}
+		}),
+		createAction("actions/remove/remove.yaml", "chassis:remove", func(input *action.Input) actionRunner {
+			return &remove.Remove{
+				Dir:     optString(input, "dir"),
+				Chassis: input.Arg("chassis").(string),
+				DryRun:  optBool(input, "dry-run"),
+			}
+		}),
+		createAction("actions/rename/rename.yaml", "chassis:rename", func(input *action.Input) actionRunner {
+			return &rename.Rename{
+				Dir:    optString(input, "dir"),
+				Old:    input.Arg("old").(string),
+				New:    input.Arg("new").(string),
+				DryRun: optBool(input, "dry-run"),
+			}
+		}),
+		createAction("actions/query/query.yaml", "chassis:query", func(input *action.Input) actionRunner {
+			return &query.Query{
+				Dir:        optString(input, "dir"),
+				Identifier: input.Arg("identifier").(string),
+				Kind:       optString(input, "kind"),
+			}
+		}),
 	}, nil
 }
 

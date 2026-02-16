@@ -8,12 +8,18 @@ action:
       description: Node hostname or component name
       required: true
   options:
+    - name: dir
+      shorthand: d
+      title: Directory
+      description: Working directory (defaults to current)
+      type: string
+      default: "."
     - name: kind
       shorthand: k
       title: Kind
-      description: Identifier kind to skip auto-detection (node, component)
+      description: Narrow search to node or component (searches both if omitted)
       type: string
-      enum: ["", node, component]
+      enum: [node, component]
       default: ""
   result:
     type: object

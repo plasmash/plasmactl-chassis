@@ -7,6 +7,19 @@ action:
       title: Chassis
       description: Chassis path to add (e.g., platform.layer.sublayer)
       required: true
+  options:
+    - name: dir
+      shorthand: d
+      title: Directory
+      description: Working directory (defaults to current)
+      type: string
+      default: "."
+    - name: force
+      shorthand: f
+      title: Force
+      description: Skip error if chassis path already exists
+      type: boolean
+      default: false
   result:
     type: object
     properties:

@@ -1,7 +1,7 @@
 runtime: plugin
 action:
   title: Rename
-  description: Rename chassis path and update allocations and attachments
+  description: Rename a chassis path segment and update all allocations and attachments. Both paths must have the same depth (number of segments).
   arguments:
     - name: old
       title: Old Path
@@ -11,6 +11,18 @@ action:
       title: New Path
       description: New chassis path
       required: true
+  options:
+    - name: dir
+      shorthand: d
+      title: Directory
+      description: Working directory (defaults to current)
+      type: string
+      default: "."
+    - name: dry-run
+      title: Dry Run
+      description: Show what would change without modifying files
+      type: boolean
+      default: false
   result:
     type: object
     properties:

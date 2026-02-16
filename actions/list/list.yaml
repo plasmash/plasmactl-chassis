@@ -8,6 +8,12 @@ action:
       description: Chassis path to filter (shows path and children)
       required: false
   options:
+    - name: dir
+      shorthand: d
+      title: Directory
+      description: Working directory (defaults to current)
+      type: string
+      default: "."
     - name: tree
       shorthand: t
       title: Tree
@@ -22,3 +28,22 @@ action:
         description: List of chassis paths
         items:
           type: string
+      tree:
+        type: array
+        description: Chassis paths enriched with node/component relations (only in tree mode)
+        items:
+          type: object
+          properties:
+            path:
+              type: string
+              description: Chassis path
+            nodes:
+              type: array
+              description: Nodes allocated to this path
+              items:
+                type: string
+            components:
+              type: array
+              description: Components attached to this path
+              items:
+                type: string

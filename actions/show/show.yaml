@@ -7,11 +7,24 @@ action:
       title: Chassis
       description: Chassis path (optional, shows all if omitted)
   options:
+    - name: dir
+      shorthand: d
+      title: Directory
+      description: Working directory (defaults to current)
+      type: string
+      default: "."
     - name: platform
       shorthand: p
       title: Platform
       description: Filter nodes by platform instance
       type: string
+      default: ""
+    - name: kind
+      shorthand: k
+      title: Kind
+      description: Filter to allocations or attachments only
+      type: string
+      enum: [allocations, attachments]
       default: ""
   result:
     type: object
@@ -45,6 +58,9 @@ action:
             component:
               type: string
               description: Component name
+            version:
+              type: string
+              description: Component version
             chassis:
               type: string
               description: Chassis path

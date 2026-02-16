@@ -8,16 +8,14 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	pkgchassis "github.com/plasmash/plasmactl-chassis/pkg/chassis"
 )
 
-// OrderedChassis represents the platform chassis configuration preserving YAML order
-type OrderedChassis struct {
-	node *yaml.Node
-	data map[string]map[string][]interface{}
+// Chassis wraps the public Chassis type with write operations.
+type Chassis struct {
+	*pkgchassis.Chassis
 }
-
-// Chassis is an alias for backward compatibility
-type Chassis = OrderedChassis
 
 // Node represents a node file from inst/<platform>/nodes/<hostname>.yaml
 type Node struct {
@@ -27,153 +25,51 @@ type Node struct {
 
 // Load reads and parses chassis.yaml from the given directory
 func Load(dir string) (*Chassis, error) {
-	path := filepath.Join(dir, "chassis.yaml")
-	data, err := os.ReadFile(path)
+	pub, err := pkgchassis.Load(dir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read chassis.yaml: %w", err)
+		return nil, err
 	}
-
-	var node yaml.Node
-	if err := yaml.Unmarshal(data, &node); err != nil {
-		return nil, fmt.Errorf("failed to parse chassis.yaml: %w", err)
-	}
-
-	var parsed map[string]map[string][]interface{}
-	if err := yaml.Unmarshal(data, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse chassis.yaml: %w", err)
-	}
-
-	return &Chassis{
-		node: &node,
-		data: parsed,
-	}, nil
+	return &Chassis{Chassis: pub}, nil
 }
 
 // Save writes the chassis configuration to chassis.yaml preserving order
 func (c *Chassis) Save(dir string) error {
 	path := filepath.Join(dir, "chassis.yaml")
-	data, err := yaml.Marshal(c.node)
+	data, err := yaml.Marshal(c.YAMLNode())
 	if err != nil {
 		return fmt.Errorf("failed to marshal chassis: %w", err)
 	}
-
 	return os.WriteFile(path, data, 0644)
-}
-
-// Flatten returns all chassis paths preserving YAML order
-func (c *Chassis) Flatten() []string {
-	if c.node == nil || len(c.node.Content) == 0 {
-		return nil
-	}
-
-	var paths []string
-	rootNode := c.node.Content[0]
-	if rootNode.Kind != yaml.MappingNode {
-		return nil
-	}
-
-	// Iterate root keys (e.g., "platform")
-	for i := 0; i < len(rootNode.Content); i += 2 {
-		rootKey := rootNode.Content[i].Value
-		rootValue := rootNode.Content[i+1]
-		paths = append(paths, rootKey)
-
-		if rootValue.Kind != yaml.MappingNode {
-			continue
-		}
-
-		// Iterate layers (e.g., "foundation", "interaction")
-		for j := 0; j < len(rootValue.Content); j += 2 {
-			layerKey := rootValue.Content[j].Value
-			layerValue := rootValue.Content[j+1]
-			layerPrefix := rootKey + "." + layerKey
-			paths = append(paths, layerPrefix)
-
-			if layerValue.Kind == yaml.SequenceNode {
-				paths = append(paths, flattenSequence(layerPrefix, layerValue)...)
-			}
-		}
-	}
-
-	return paths
-}
-
-// flattenSequence recursively flattens a YAML sequence preserving order
-func flattenSequence(prefix string, node *yaml.Node) []string {
-	var paths []string
-
-	for _, item := range node.Content {
-		switch item.Kind {
-		case yaml.ScalarNode:
-			// Simple string item
-			paths = append(paths, prefix+"."+item.Value)
-		case yaml.MappingNode:
-			// Nested structure like "cluster: [control, nodes]"
-			for k := 0; k < len(item.Content); k += 2 {
-				key := item.Content[k].Value
-				value := item.Content[k+1]
-				newPrefix := prefix + "." + key
-				paths = append(paths, newPrefix)
-				if value.Kind == yaml.SequenceNode {
-					paths = append(paths, flattenSequence(newPrefix, value)...)
-				}
-			}
-		}
-	}
-
-	return paths
-}
-
-// FlattenWithPrefix returns chassis paths that start with the given prefix
-func (c *Chassis) FlattenWithPrefix(prefix string) []string {
-	all := c.Flatten()
-	if prefix == "" {
-		return all
-	}
-
-	var filtered []string
-	for _, path := range all {
-		if path == prefix || strings.HasPrefix(path, prefix+".") {
-			filtered = append(filtered, path)
-		}
-	}
-	return filtered
-}
-
-// Exists checks if a chassis path exists
-func (c *Chassis) Exists(chassisPath string) bool {
-	for _, path := range c.Flatten() {
-		if path == chassisPath {
-			return true
-		}
-	}
-	return false
 }
 
 // Add adds a new chassis path preserving YAML order
 // Path format: any dotted path (e.g., platform, platform.bite, platform.foundation.cluster)
 func (c *Chassis) Add(chassisPath string) error {
-	parts := strings.Split(chassisPath, ".")
-	if len(parts) < 1 || chassisPath == "" {
-		return fmt.Errorf("chassis path cannot be empty")
+	if err := pkgchassis.ValidatePath(chassisPath); err != nil {
+		return err
 	}
+
+	parts := strings.Split(chassisPath, ".")
 
 	if c.Exists(chassisPath) {
 		return fmt.Errorf("chassis path %q already exists", chassisPath)
 	}
 
 	// Work with yaml.Node to preserve order
-	if c.node == nil || len(c.node.Content) == 0 {
+	node := c.YAMLNode()
+	if node == nil || len(node.Content) == 0 {
 		// Create new document node
-		c.node = &yaml.Node{
+		newNode := &yaml.Node{
 			Kind: yaml.DocumentNode,
 			Content: []*yaml.Node{{
 				Kind: yaml.MappingNode,
 			}},
 		}
+		c.SetYAMLNode(newNode)
+		node = newNode
 	}
 
-	rootNode := c.node.Content[0]
+	rootNode := node.Content[0]
 
 	if len(parts) == 1 {
 		// Just a root key (e.g., "platform")
@@ -208,22 +104,24 @@ func (c *Chassis) Add(chassisPath string) error {
 		addPathToSequence(layerValueNode, remaining)
 	}
 
-	// Also update c.data for consistency
-	if c.data == nil {
-		c.data = make(map[string]map[string][]interface{})
+	// Also update data for consistency
+	d := c.RawData()
+	if d == nil {
+		d = make(map[string]map[string][]interface{})
+		c.SetRawData(d)
 	}
 	if len(parts) >= 2 {
 		root := parts[0]
 		layer := parts[1]
-		if c.data[root] == nil {
-			c.data[root] = make(map[string][]interface{})
+		if d[root] == nil {
+			d[root] = make(map[string][]interface{})
 		}
 		if len(parts) > 2 {
-			c.data[root][layer] = addChassisPath(c.data[root][layer], parts[2:])
+			d[root][layer] = addChassisPath(d[root][layer], parts[2:])
 		} else {
 			// Just ensure the layer exists
-			if c.data[root][layer] == nil {
-				c.data[root][layer] = []interface{}{}
+			if d[root][layer] == nil {
+				d[root][layer] = []interface{}{}
 			}
 		}
 	}
@@ -343,8 +241,9 @@ func (c *Chassis) Remove(chassisPath string) error {
 	}
 
 	// Remove from yaml.Node
-	if c.node != nil && len(c.node.Content) > 0 {
-		rootNode := c.node.Content[0]
+	node := c.YAMLNode()
+	if node != nil && len(node.Content) > 0 {
+		rootNode := node.Content[0]
 		if rootNode.Kind == yaml.MappingNode {
 			if len(parts) == 1 {
 				// Remove root key entirely
@@ -399,9 +298,14 @@ func (c *Chassis) Remove(chassisPath string) error {
 		}
 	}
 
-	// Also update c.data for consistency
+	// Also update data for consistency
+	d := c.RawData()
+	if d == nil {
+		return nil
+	}
+
 	if len(parts) == 1 {
-		delete(c.data, parts[0])
+		delete(d, parts[0])
 		return nil
 	}
 
@@ -409,15 +313,15 @@ func (c *Chassis) Remove(chassisPath string) error {
 	layer := parts[1]
 
 	if len(parts) == 2 {
-		if c.data[root] != nil {
-			delete(c.data[root], layer)
+		if d[root] != nil {
+			delete(d[root], layer)
 		}
 		return nil
 	}
 
 	remaining := parts[2:]
 	var removed bool
-	c.data[root][layer], removed = removeChassisPath(c.data[root][layer], remaining)
+	d[root][layer], removed = removeChassisPath(d[root][layer], remaining)
 	if !removed {
 		return fmt.Errorf("failed to remove chassis path %q", chassisPath)
 	}
@@ -477,7 +381,8 @@ func removePathFromSequence(seqNode *yaml.Node, path []string) bool {
 // GetTree returns the chassis as a tree structure for display
 func (c *Chassis) GetTree() map[string]interface{} {
 	tree := make(map[string]interface{})
-	for root, layers := range c.data {
+	d := c.RawData()
+	for root, layers := range d {
 		for layer, chassis := range layers {
 			tree[root+"."+layer] = chassisToTree(chassis)
 		}
@@ -679,7 +584,7 @@ func NodesForChassis(nodes []Node, chassisPath string) []Node {
 	return result
 }
 
-// NodesByPlatform groups nodes by their platform
+// LoadNodesByPlatform groups nodes by their platform
 func LoadNodesByPlatform(dir string) (map[string][]Node, error) {
 	result := make(map[string][]Node)
 
@@ -733,11 +638,12 @@ func (c *Chassis) Rename(oldPath, newPath string) error {
 	}
 
 	// Update yaml.Node
-	if c.node != nil && len(c.node.Content) > 0 {
-		renameInNode(c.node.Content[0], oldParts, newParts, diffIdx, 0)
+	node := c.YAMLNode()
+	if node != nil && len(node.Content) > 0 {
+		renameInNode(node.Content[0], oldParts, newParts, diffIdx, 0)
 	}
 
-	// Update c.data for consistency
+	// Update data for consistency
 	c.updateDataForRename(oldParts, newParts, diffIdx)
 
 	return nil
@@ -792,34 +698,35 @@ func renameInNode(node *yaml.Node, oldParts, newParts []string, diffIdx, depth i
 	return false
 }
 
-// updateDataForRename updates c.data after a rename
+// updateDataForRename updates data after a rename
 func (c *Chassis) updateDataForRename(oldParts, newParts []string, diffIdx int) {
-	if c.data == nil {
+	d := c.RawData()
+	if d == nil {
 		return
 	}
 
 	switch diffIdx {
 	case 0:
 		// Renaming root key
-		if data, exists := c.data[oldParts[0]]; exists {
-			c.data[newParts[0]] = data
-			delete(c.data, oldParts[0])
+		if data, exists := d[oldParts[0]]; exists {
+			d[newParts[0]] = data
+			delete(d, oldParts[0])
 		}
 	case 1:
 		// Renaming layer key
 		root := oldParts[0]
-		if c.data[root] != nil {
-			if data, exists := c.data[root][oldParts[1]]; exists {
-				c.data[root][newParts[1]] = data
-				delete(c.data[root], oldParts[1])
+		if d[root] != nil {
+			if data, exists := d[root][oldParts[1]]; exists {
+				d[root][newParts[1]] = data
+				delete(d[root], oldParts[1])
 			}
 		}
 	default:
 		// Renaming within nested chassis structure
 		root := oldParts[0]
 		layer := oldParts[1]
-		if c.data[root] != nil && c.data[root][layer] != nil {
-			c.data[root][layer] = renameInChassisData(c.data[root][layer], oldParts[2:], newParts[2:], diffIdx-2)
+		if d[root] != nil && d[root][layer] != nil {
+			d[root][layer] = renameInChassisData(d[root][layer], oldParts[2:], newParts[2:], diffIdx-2)
 		}
 	}
 }

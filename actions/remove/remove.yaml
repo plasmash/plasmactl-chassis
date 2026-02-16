@@ -7,9 +7,34 @@ action:
       title: Chassis
       description: Chassis path to remove
       required: true
+  options:
+    - name: dir
+      shorthand: d
+      title: Directory
+      description: Working directory (defaults to current)
+      type: string
+      default: "."
+    - name: dry-run
+      title: Dry Run
+      description: Show what would be checked without removing
+      type: boolean
+      default: false
   result:
     type: object
     properties:
       chassis:
         type: string
         description: The chassis path that was removed
+      dry_run:
+        type: boolean
+        description: Whether this was a dry run
+      allocated_nodes:
+        type: array
+        description: Nodes allocated to this chassis path
+        items:
+          type: string
+      attached_components:
+        type: array
+        description: Components attached to this chassis path
+        items:
+          type: string

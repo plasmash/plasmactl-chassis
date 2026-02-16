@@ -1,6 +1,7 @@
 package show
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -46,8 +47,10 @@ type Show struct {
 	action.WithLogger
 	action.WithTerm
 
+	Dir      string
 	Chassis  string
 	Platform string
+	Kind     string // "allocations" or "attachments" to filter
 
 	result *ShowResult
 }
@@ -59,19 +62,21 @@ func (s *Show) Result() any {
 
 // Execute runs the show action
 func (s *Show) Execute() error {
-	c, err := chassis.Load(".")
+	c, err := chassis.Load(s.Dir)
 	if err != nil {
 		return err
 	}
 
 	// If chassis path specified, validate it exists
 	if s.Chassis != "" && !c.Exists(s.Chassis) {
-		s.Term().Error().Printfln("Chassis %q not found in chassis.yaml", s.Chassis)
-		return nil
+		return fmt.Errorf("chassis %q not found in chassis.yaml", s.Chassis)
 	}
 
+	showAllocations := s.Kind == "" || s.Kind == "allocations"
+	showAttachments := s.Kind == "" || s.Kind == "attachments"
+
 	// Load all nodes by platform
-	nodesByPlatform, err := node.LoadByPlatform(".")
+	nodesByPlatform, err := node.LoadByPlatform(s.Dir)
 	if err != nil {
 		s.Log().Debug("Failed to load nodes", "error", err)
 	}
@@ -86,7 +91,7 @@ func (s *Show) Execute() error {
 	}
 
 	// Load components from playbooks
-	components, err := component.LoadFromPlaybooks(".")
+	components, err := component.LoadFromPlaybooks(s.Dir)
 	if err != nil {
 		s.Log().Debug("Failed to load components", "error", err)
 	}
@@ -100,17 +105,6 @@ func (s *Show) Execute() error {
 	// Get attachments map (component → chassis paths)
 	attachmentsMap := components.Attachments(c)
 
-	// Determine query chassis path - use root if not specified
-	chassisToQuery := s.Chassis
-	if chassisToQuery == "" {
-		// Find root from chassis (first segment of first path)
-		roots := c.Flatten()
-		if len(roots) > 0 {
-			parts := strings.SplitN(roots[0], ".", 2)
-			chassisToQuery = parts[0]
-		}
-	}
-
 	// Collect component attachments for the chassis path
 	type componentInfo struct {
 		chassis   string
@@ -122,7 +116,7 @@ func (s *Show) Execute() error {
 	for compName, chassisPaths := range attachmentsMap {
 		for _, chassisPath := range chassisPaths {
 			// Check if chassis path matches query (exact match or descendant)
-			if chassisToQuery == "" || chassisPath == chassisToQuery || chassis.IsDescendantOf(chassisPath, chassisToQuery) {
+			if s.Chassis == "" || chassisPath == s.Chassis || chassis.IsDescendantOf(chassisPath, s.Chassis) {
 				compInfos = append(compInfos, componentInfo{
 					chassis:   chassisPath,
 					component: compName,
@@ -216,22 +210,29 @@ func (s *Show) Execute() error {
 	}
 
 	// Output
-	if len(s.result.Allocations) == 0 && len(s.result.Attachments) == 0 {
+	hasAllocations := showAllocations && len(s.result.Allocations) > 0
+	hasAttachments := showAttachments && len(s.result.Attachments) > 0
+
+	if !hasAllocations && !hasAttachments {
 		s.Term().Info().Println("No allocations or attachments found")
 		return nil
 	}
 
-	if len(s.result.Allocations) > 0 {
+	if hasAllocations {
 		s.Term().Info().Printfln("Allocations (%d nodes)", len(s.result.Allocations))
 		for _, n := range s.result.Allocations {
-			s.Term().Printfln("node\t%s\t(%d chassis)", n.DisplayName(), len(n.Chassis))
+			chassisStr := strings.Join(n.Chassis, ", ")
+			if len(chassisStr) > 60 {
+				chassisStr = chassisStr[:57] + "..."
+			}
+			s.Term().Printfln("  %s  [%s]", n.DisplayName(), chassisStr)
 		}
 	}
 
-	if len(s.result.Attachments) > 0 {
+	if hasAttachments {
 		s.Term().Info().Printfln("Attachments (%d components)", len(s.result.Attachments))
 		for _, a := range s.result.Attachments {
-			s.Term().Printfln("component\t%s\t%s", a.DisplayName(), a.Chassis)
+			s.Term().Printfln("  %s  @ %s", a.DisplayName(), a.Chassis)
 		}
 	}
 
