@@ -48,16 +48,16 @@ func (l *List) Execute() error {
 		return err
 	}
 
+	// Initialize result early so --json always returns an object, never null
+	l.result = &ListResult{Chassis: []string{}}
+
 	paths := c.FlattenWithPrefix(l.Chassis)
 	if len(paths) == 0 {
 		l.Term().Warning().Println("No chassis paths found")
 		return nil
 	}
 
-	// Build result
-	l.result = &ListResult{
-		Chassis: paths,
-	}
+	l.result.Chassis = paths
 
 	if l.Tree {
 		l.printTreeWithRelations(c, paths)
@@ -176,43 +176,11 @@ func printNodeWithRelations(term *launchr.Terminal, node *treeNode, indent, pref
 	nodes := chassisToNodes[node.fullPath]
 	comps := chassisToComponents[node.fullPath]
 
-	// Calculate total children (chassis + nodes + components)
+	// Order: child chassis paths first (structural hierarchy), then nodes, then components
 	totalChildren := len(node.children) + len(nodes) + len(comps)
 	childIdx := 0
 
-	// Print nodes for this chassis path
-	for _, n := range nodes {
-		childIdx++
-		isLast := childIdx == totalChildren
-		var childPrefix, nextIndent string
-		if isLast {
-			childPrefix = indent + "└── "
-			nextIndent = indent + "    "
-		} else {
-			childPrefix = indent + "├── "
-			nextIndent = indent + "│   "
-		}
-		_ = nextIndent // unused for leaf nodes
-		term.Printfln("%s🖥 %s", childPrefix, n)
-	}
-
-	// Print components for this chassis path
-	for _, comp := range comps {
-		childIdx++
-		isLast := childIdx == totalChildren
-		var childPrefix, nextIndent string
-		if isLast {
-			childPrefix = indent + "└── "
-			nextIndent = indent + "    "
-		} else {
-			childPrefix = indent + "├── "
-			nextIndent = indent + "│   "
-		}
-		_ = nextIndent // unused for leaf nodes
-		term.Printfln("%s🧩 %s", childPrefix, comp)
-	}
-
-	// Print child chassis paths
+	// Print child chassis paths first
 	for _, child := range node.children {
 		childIdx++
 		isLast := childIdx == totalChildren
@@ -227,5 +195,31 @@ func printNodeWithRelations(term *launchr.Terminal, node *treeNode, indent, pref
 		}
 
 		printNodeWithRelations(term, child, nextIndent, childPrefix, chassisToNodes, chassisToComponents)
+	}
+
+	// Print nodes allocated to this chassis path
+	for _, n := range nodes {
+		childIdx++
+		isLast := childIdx == totalChildren
+		var childPrefix string
+		if isLast {
+			childPrefix = indent + "└── "
+		} else {
+			childPrefix = indent + "├── "
+		}
+		term.Printfln("%s🖥 %s", childPrefix, n)
+	}
+
+	// Print components distributed to this chassis path
+	for _, comp := range comps {
+		childIdx++
+		isLast := childIdx == totalChildren
+		var childPrefix string
+		if isLast {
+			childPrefix = indent + "└── "
+		} else {
+			childPrefix = indent + "├── "
+		}
+		term.Printfln("%s🧩 %s", childPrefix, comp)
 	}
 }
